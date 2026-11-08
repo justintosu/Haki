@@ -278,6 +278,39 @@ function utcDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+const MARKET_DATE_FORMAT = (() => {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  } catch {
+    return null;
+  }
+})();
+
+/**
+ * The "yyyy-MM-dd" date in US Eastern time (the US market day). Links are
+ * US-only, so snapshots use this rather than UTC, which is already
+ * "tomorrow" for US users every evening. Falls back to UTC.
+ */
+function marketDate(date: Date): string {
+  if (MARKET_DATE_FORMAT) {
+    try {
+      const parts = MARKET_DATE_FORMAT.formatToParts(date);
+      const part = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((p) => p.type === type)?.value ?? "";
+      const text = `${part("year")}-${part("month")}-${part("day")}`;
+      if (isoDate(text) === text) return text;
+    } catch {
+      // Fall back to UTC below.
+    }
+  }
+  return utcDate(date);
+}
+
 function truncate(text: string, maxLength: number): string {
   return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
 }
@@ -1363,9 +1396,17 @@ function describeSyncProblem(
   };
 }
 
+/** Plaid errors that mean the server's own keys don't work (not this item). */
+const PLAID_KEY_ERROR_CODES = new Set([
+  "INVALID_API_KEYS",
+  "UNAUTHORIZED_ENVIRONMENT",
+]);
+
 /**
- * Syncs one connection. Never throws: failures are recorded on the
- * connection (status + error_message) so other connections keep syncing.
+ * Syncs one connection. Failures are recorded on the connection (status +
+ * error_message) so other connections keep syncing. The one exception: when
+ * Plaid rejects the server's keys, it rethrows (→ 503 plaid_not_configured)
+ * instead of blaming every connection for a server setup problem.
  */
 async function syncConnection(
   ctx: SyncContext,
@@ -1430,6 +1471,12 @@ async function syncConnection(
       last_synced_at: new Date().toISOString(),
     });
   } catch (error) {
+    if (
+      error instanceof PlaidApiError &&
+      PLAID_KEY_ERROR_CODES.has(error.errorCode)
+    ) {
+      throw error;
+    }
     logPlaidError(`sync of connection ${connection.id} failed`, error);
     const problem = describeSyncProblem(error, institution);
     try {
@@ -1449,15 +1496,15 @@ async function syncConnection(
 }
 
 /**
- * Upserts today's (UTC) portfolio snapshot from the user's stored holdings.
- * With no holdings stored (no connections left, or none has synced data),
- * today's snapshot is removed instead, so the chart never shows a fake 0.
+ * Upserts today's (US Eastern) portfolio snapshot from the user's stored
+ * holdings. With no holdings stored (no connections left, or none has synced
+ * data), today's snapshot is removed instead, so the chart never shows a fake 0.
  */
 async function refreshSnapshot(
   admin: AdminClient,
   userId: string,
 ): Promise<void> {
-  const date = utcDate(new Date());
+  const date = marketDate(new Date());
   const holdings = await selectAll<{ value: unknown; cost_basis: unknown }>(
     "reading holdings for the snapshot",
     (from, to) =>

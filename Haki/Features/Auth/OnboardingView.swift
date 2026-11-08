@@ -20,6 +20,8 @@ struct OnboardingView: View {
     @State private var sharePortfolio = true
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarJPEG: Data?
+    /// `avatarJPEG` decoded once for the preview, so typing doesn't re-decode it.
+    @State private var avatarImage: UIImage?
     @State private var isLoadingPhoto = false
     @State private var didPrefill = false
     /// The server's verdict on the username, e.g. "That username is taken."
@@ -49,7 +51,9 @@ struct OnboardingView: View {
                 continueBar
             }
         }
-        .onAppear(perform: prefillIfNeeded)
+        .onAppear {
+            prefillIfNeeded()
+        }
         .onChange(of: auth.profile?.id) {
             prefillIfNeeded()
         }
@@ -106,8 +110,8 @@ struct OnboardingView: View {
 
     private var avatar: some View {
         ZStack {
-            if let avatarJPEG, let image = UIImage(data: avatarJPEG) {
-                Image(uiImage: image)
+            if let avatarImage {
+                Image(uiImage: avatarImage)
                     .resizable()
                     .scaledToFill()
                     .frame(width: Self.avatarSize, height: Self.avatarSize)
@@ -137,6 +141,7 @@ struct OnboardingView: View {
             if avatarJPEG != nil {
                 Button(role: .destructive) {
                     avatarJPEG = nil
+                    avatarImage = nil
                     photoItem = nil
                 } label: {
                     Label("Remove", systemImage: "trash")
@@ -307,16 +312,29 @@ struct OnboardingView: View {
     private func loadPhoto(_ item: PhotosPickerItem?) async {
         guard let item else { return }
         isLoadingPhoto = true
-        defer { isLoadingPhoto = false }
+        defer {
+            // A newer pick that's still loading keeps the spinner.
+            if photoItem == nil || photoItem == item {
+                isLoadingPhoto = false
+            }
+        }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let jpeg = ImageUpload.jpegData(from: data, maxDimension: 512, quality: 0.85)
+            let data = try await item.loadTransferable(type: Data.self)
+            // A newer pick (or "Remove") replaced this one while it loaded.
+            guard photoItem == item else { return }
+            guard let data,
+                  let jpeg = ImageUpload.jpegData(from: data, maxDimension: 512, quality: 0.85),
+                  let image = UIImage(data: jpeg)
             else {
+                photoItem = nil
                 errorMessage = "Haki couldn't use that photo. Try a different one."
                 return
             }
             avatarJPEG = jpeg
+            avatarImage = image
         } catch {
+            guard photoItem == item else { return }
+            photoItem = nil
             errorMessage = "Haki couldn't load that photo. Try a different one."
         }
     }

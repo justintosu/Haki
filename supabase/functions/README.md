@@ -83,8 +83,12 @@ What each action does:
        connect it again.
      - Transient errors (institution down, rate limit, network, our own
        database errors) set `error`.
+     - If Plaid rejects the server's own keys (`INVALID_API_KEYS`,
+       `UNAUTHORIZED_ENVIRONMENT`), the whole request fails with
+       `503 plaid_not_configured` and connection statuses are left alone.
   4. **Snapshot.** Finally upserts today's `portfolio_snapshots` row (the sum of
-     the user's holdings `value` and `cost_basis`). The date is in UTC. If the
+     the user's holdings `value` and `cost_basis`). The date is the US Eastern
+     (market) day, so evening syncs in the US don't land on tomorrow. If the
      user has no holdings stored, today's row is deleted instead, so the chart
      never shows a fake zero. A snapshot failure is logged and never fails the
      request.

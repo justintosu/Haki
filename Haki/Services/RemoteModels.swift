@@ -428,7 +428,9 @@ nonisolated struct PostDraft: Hashable {
         // Postgres counts characters as code points.
         guard caption.unicodeScalars.count <= 2200 else { return false }
         let hasCaption = !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        guard hasCaption || imageJPEG != nil || attachment != nil else { return false }
+        // `SocialService.createPost` only sends the attachment with portfolio posts.
+        let hasAttachment = kind == .portfolio && attachment != nil
+        guard hasCaption || imageJPEG != nil || hasAttachment else { return false }
 
         let symbol = ticker?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !symbol.isEmpty, !Cashtags.isValidTicker(symbol) { return false }

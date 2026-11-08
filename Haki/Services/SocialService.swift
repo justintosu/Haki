@@ -82,6 +82,7 @@ import Supabase
         // The caption filter is a substring match ("$AAPL" also matches "$AAPLX"),
         // so check matches exactly here, fetching a few more pages if needed to fill this one.
         var result: [FeedPost] = []
+        var seen = Set<UUID>()
         var cursor = before
         do {
             for _ in 0..<4 {
@@ -95,7 +96,9 @@ import Supabase
                     .limit(pageSize)
                     .execute()
                     .value
-                result += batch.filter { Self.post($0, mentions: symbol) }
+                for post in batch where Self.post(post, mentions: symbol) && seen.insert(post.id).inserted {
+                    result.append(post)
+                }
                 guard batch.count == pageSize, result.count < pageSize, let last = batch.last else { break }
                 cursor = last.createdAt
             }

@@ -6,6 +6,7 @@
 //  the welcome screen, onboarding, or the tab bar, depending on `AuthService.state`.
 //
 
+import CoreGraphics
 import Foundation
 import Observation
 import SwiftUI
@@ -110,4 +111,5 @@ private struct AuthLaunchView: View {
 
 #Preview("Launch screen") {
     AuthLaunchView()
+        .previewEnvironment()
 }

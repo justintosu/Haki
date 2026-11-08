@@ -122,10 +122,10 @@ struct SignInEmailView: View {
             clearError()
         }
         .onChange(of: email) {
-            if errorText != nil { clearError() }
+            if displayedError != nil { clearError() }
         }
         .onChange(of: password) {
-            if errorText != nil { clearError() }
+            if displayedError != nil { clearError() }
         }
     }
 

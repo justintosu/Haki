@@ -327,6 +327,8 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     // MARK: Signing out
 
     func signOut() async {
+        // A message about the account being left behind would only confuse the welcome screen.
+        errorMessage = nil
         guard let client else {
             resetToSignedOut()
             return
@@ -362,7 +364,11 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     private func handleAuthChange(_ event: AuthChangeEvent, session: Session?) async {
         switch event {
         case .signedOut, .userDeleted:
-            if let uid = userID { Self.removeCachedProfile(for: uid) }
+            if let uid = userID {
+                Self.removeCachedProfile(for: uid)
+                // Stale messages about the signed-out account (e.g. a failed profile load).
+                errorMessage = nil
+            }
             resetToSignedOut()
         case .initialSession:
             if let session {
@@ -452,7 +458,6 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         profileFetch?.cancel()
         profileFetch = nil
         profileFetchUserID = nil
-        appleRawNonce = nil
         profile = nil
         userID = nil
         email = nil
@@ -659,7 +664,7 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     // MARK: - Sign in with Apple
 
     private static func randomNonce(length: Int = 32) -> String {
-        let characters = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        let characters = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
         var generator = SystemRandomNumberGenerator()
         return String((0..<length).map { _ in characters[Int.random(in: 0..<characters.count, using: &generator)] })
     }
