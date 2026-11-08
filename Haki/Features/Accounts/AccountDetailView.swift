@@ -362,7 +362,10 @@ private struct AccountBalanceHistoryCard: View {
             AccountsRangePicker(range: $range)
         }
         .hakiCard()
-        .sensoryFeedback(.selection, trigger: selected?.date)
+        // A tick for each new point under the finger, but not when it lifts.
+        .sensoryFeedback(.selection, trigger: selected?.date) { _, newValue in
+            newValue != nil
+        }
     }
 
     private func header(selected: AccountsChartPoint?) -> some View {

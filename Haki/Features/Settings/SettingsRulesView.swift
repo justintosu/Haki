@@ -63,16 +63,31 @@ struct SettingsRulesView: View {
     }
 
     private func deleteRules(at offsets: IndexSet) {
-        let targets = offsets.map { rules[$0] }
+        let targets: [MerchantRule] = offsets.map { rules[$0] }
+        // Read everything before deleting: removing one merchant's rule also
+        // removes its duplicates, which may be among the other targets.
+        var keyedMerchants: [(key: String, name: String)] = []
+        var seenKeys = Set<String>()
+        var unkeyed: [MerchantRule] = []
         for rule in targets {
-            if rule.merchantKey.isEmpty {
-                modelContext.delete(rule)
-                LedgerStore.save(modelContext)
-            } else {
-                // Removes this rule and any duplicates for the same merchant.
-                LedgerStore.setRule(merchantKey: rule.merchantKey, merchantName: rule.merchantName,
-                                    category: nil, in: modelContext)
+            let key = rule.merchantKey
+            if key.isEmpty {
+                unkeyed.append(rule)
+            } else if seenKeys.insert(key).inserted {
+                keyedMerchants.append((key: key, name: rule.merchantName))
             }
+        }
+
+        for rule in unkeyed {
+            modelContext.delete(rule)
+        }
+        if !unkeyed.isEmpty {
+            LedgerStore.save(modelContext)
+        }
+        for merchant in keyedMerchants {
+            // Removes this merchant's rule and any duplicates of it.
+            LedgerStore.setRule(merchantKey: merchant.key, merchantName: merchant.name,
+                                category: nil, in: modelContext)
         }
     }
 }
@@ -151,19 +166,32 @@ private struct SettingsRuleCategoryPicker: View {
     }
 
     var body: some View {
-        CategoryPickerView(selection: $selection, allowsNone: false)
-            .onChange(of: selection) { _, newValue in
-                apply(newValue)
-            }
+        CategoryPickerView(selection: selectionBinding, allowsNone: false)
     }
 
-    private func apply(_ category: TransactionCategory?) {
-        guard let category, category.id != rule.category?.id else { return }
-        if rule.merchantKey.isEmpty {
+    /// Applies the choice as soon as the picker sets it. The picker pops right
+    /// after setting the selection, so this doesn't wait for an `onChange` on
+    /// a view that is on its way out.
+    private var selectionBinding: Binding<TransactionCategory?> {
+        Binding(
+            get: { selection },
+            set: { newValue in
+                let previousID = selection?.id
+                selection = newValue
+                if let newValue, newValue.id != previousID {
+                    apply(newValue)
+                }
+            }
+        )
+    }
+
+    private func apply(_ category: TransactionCategory) {
+        let key = rule.merchantKey
+        if key.isEmpty {
             rule.category = category
             LedgerStore.save(modelContext)
         } else {
-            LedgerStore.setRule(merchantKey: rule.merchantKey, merchantName: rule.merchantName,
+            LedgerStore.setRule(merchantKey: key, merchantName: rule.merchantName,
                                 category: category, in: modelContext)
         }
     }
