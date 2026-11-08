@@ -2,7 +2,7 @@
 //  InvestConnectionsCard.swift
 //  Haki
 //
-//  The linked brokerages: status, last sync, accounts, and removing one.
+//  The linked brokerages: status, last sync, accounts, syncing, and removing one.
 //
 
 import Foundation
@@ -30,7 +30,7 @@ struct InvestConnectionsCard: View {
                 }
             }
             BrokerageLinkButton(title: "Connect another brokerage")
-            Text("Connections are read-only. Removing one deletes its holdings and history from Haki; your brokerage account isn't affected.")
+            Text("Connections are read-only. Removing one deletes its accounts, holdings and transactions from Haki; your brokerage account isn't affected.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -47,7 +47,7 @@ struct InvestConnectionsCard: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { connection in
-            Text("Haki stops syncing \(connection.institutionName) and deletes its accounts, holdings and history from Haki. Your brokerage account itself isn't affected.")
+            Text("Haki stops syncing \(connection.institutionName) and deletes its accounts, holdings and transactions from Haki. Your performance chart keeps the values it recorded on earlier days. Your brokerage account itself isn't affected.")
         }
         .alert("Couldn't remove the connection", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
@@ -95,6 +95,7 @@ struct InvestConnectionsCard: View {
                     .accessibilityLabel("Removing \(connection.institutionName)")
             } else {
                 Menu {
+                    syncButton
                     removeButton(connection)
                 } label: {
                     Image(systemName: "ellipsis")
@@ -109,6 +110,7 @@ struct InvestConnectionsCard: View {
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .contextMenu {
+            syncButton
             removeButton(connection)
         }
     }
@@ -119,13 +121,14 @@ struct InvestConnectionsCard: View {
             Label(connection.status == "error" ? "Sync error" : "Needs attention", systemImage: "exclamationmark.triangle.fill")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color.hakiWarning)
-            if let message = connection.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty {
+            let message = connection.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !message.isEmpty {
                 Text(message)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("To fix it, remove this connection and connect it again. " + InvestFormat.syncedText(connection.lastSyncedAt) + ".")
+            Text(advice(for: connection, message: message))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -136,12 +139,39 @@ struct InvestConnectionsCard: View {
         }
     }
 
+    /// What to do about a connection that isn't syncing, plus when it last did.
+    private func advice(for connection: BrokerageConnection, message: String) -> String {
+        let synced = InvestFormat.syncedText(connection.lastSyncedAt) + "."
+        if connection.status == "error" {
+            // Temporary (brokerage down, rate limit, server hiccup): removing would
+            // only lose data that the next sync will bring up to date.
+            return synced + " Haki keeps what it last synced and tries again each time it syncs."
+        }
+        // The server's message usually says this already.
+        if message.localizedCaseInsensitiveContains("connect it again")
+            || message.localizedCaseInsensitiveContains("connecting it again") {
+            return synced
+        }
+        return "To fix it, remove this connection and connect it again. " + synced
+    }
+
+    /// Syncs every connection (that's what the server's sync does).
+    private var syncButton: some View {
+        Button {
+            Task { try? await portfolio.sync() }
+        } label: {
+            Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+        }
+        .disabled(portfolio.isSyncing)
+    }
+
     private func removeButton(_ connection: BrokerageConnection) -> some View {
         Button(role: .destructive) {
             pendingRemoval = connection
         } label: {
             Label("Remove connection", systemImage: "trash")
         }
+        .disabled(removingIDs.contains(connection.id))
     }
 
     private func accountsText(_ linked: [InvestmentAccount]) -> String {

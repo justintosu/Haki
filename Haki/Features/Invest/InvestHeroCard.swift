@@ -3,7 +3,8 @@
 //  Haki
 //
 //  What the Invest tab shows before any brokerage is connected: what
-//  connecting gives you, how sharing works, and the connect button.
+//  connecting gives you, how sharing works (and whether your profile will
+//  show your holdings), and the connect button.
 //
 
 import Foundation
@@ -18,7 +19,7 @@ struct InvestHeroCard: View {
                 Text("Invest alongside your people")
                     .font(.title2.weight(.bold))
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Connect your brokerage to see every holding in one place, then share how you invest with friends — in percentages, never dollar amounts.")
+                Text("Connect your brokerage to see every holding in one place, then share how you invest — in percentages, never dollar amounts.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -38,9 +39,11 @@ struct InvestHeroCard: View {
                 InvestHeroFeature(
                     systemImage: "person.2.fill",
                     title: "Share percentages, not amounts",
-                    detail: "Show friends what you hold and how it's doing. How much you have stays private."
+                    detail: "Your profile and posts can show what you hold and how it's doing. How much you have stays private."
                 )
             }
+
+            InvestProfileSharingToggle(isConnected: false)
 
             BrokerageLinkButton()
 

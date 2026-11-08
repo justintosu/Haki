@@ -3,8 +3,8 @@
 //  Haki
 //
 //  The top of the Invest tab: total value, total gain, sync status with a
-//  sync button. Plus the "Share with friends" card that opens a portfolio
-//  post (percentages only).
+//  sync button. Plus the "Sharing" card that opens a portfolio post
+//  (percentages only) and shows whether the profile shows the holdings.
 //
 
 import Foundation
@@ -117,19 +117,25 @@ struct InvestSummaryCard: View {
 
 // MARK: - Share card
 
-/// Invites the user to post their allocation; shows what would be shared.
+/// Invites the user to post their allocation; shows what would be shared,
+/// and whether the profile shows the holdings.
 struct InvestShareCard: View {
     let preview: SharedPortfolio
     let onShare: () -> Void
 
+    /// Why "Share my portfolio" is unavailable when there's nothing to share.
+    static let nothingToShareText = "Nothing to share yet: cash isn't included, and holdings appear after your brokerage's first sync."
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CardHeader("Share with friends", systemImage: "person.2")
+            CardHeader("Sharing", systemImage: "person.2")
             Text("Post your top holdings and overall return as percentages. Dollar amounts always stay private.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if !preview.holdings.isEmpty {
+            if preview.holdings.isEmpty {
+                InvestInlineNote(systemImage: "info.circle", text: Self.nothingToShareText)
+            } else {
                 InvestShareStrip(items: preview.holdings)
             }
             Button(action: onShare) {
@@ -140,6 +146,9 @@ struct InvestShareCard: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .disabled(preview.holdings.isEmpty)
+            .accessibilityHint(preview.holdings.isEmpty ? Self.nothingToShareText : "")
+
+            InvestProfileSharingToggle(isConnected: true, showsDivider: true)
         }
         .hakiCard()
     }

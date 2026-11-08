@@ -684,6 +684,12 @@ interface PlaidInvestmentTransactionsGetResponse {
   request_id?: string;
 }
 
+interface PlaidAccountsGetResponse {
+  accounts?: PlaidAccount[];
+  item?: PlaidItem;
+  request_id?: string;
+}
+
 /**
  * POSTs to a Plaid endpoint with the client credentials in the body.
  * Throws PlaidApiError on any failure. Never logs the body (it holds secrets).
@@ -1526,14 +1532,21 @@ async function refreshSnapshot(
     return;
   }
 
+  // The app charts cost_basis as "Invested" next to total_value, so the two
+  // must be comparable. A holding without a usable cost basis (cash, many
+  // funds, transferred-in lots) counts as invested at its current value, so
+  // the gap between the lines is exactly the gain on the holdings that report
+  // what was paid. That's the same rule as the app's summary card (value > 0
+  // and cost basis > 0). Null when no holding reports a usable cost basis.
   let totalValue = 0;
-  let costBasis = 0;
+  let reportedGain = 0;
   let hasCostBasis = false;
   for (const holding of holdings) {
-    totalValue += num(holding.value) ?? 0;
+    const value = num(holding.value) ?? 0;
+    totalValue += value;
     const cost = num(holding.cost_basis);
-    if (cost !== null) {
-      costBasis += cost;
+    if (cost !== null && cost > 0 && value > 0) {
+      reportedGain += value - cost;
       hasCostBasis = true;
     }
   }
@@ -1545,7 +1558,7 @@ async function refreshSnapshot(
         user_id: userId,
         date,
         total_value: round(totalValue, 4),
-        cost_basis: hasCostBasis ? round(costBasis, 4) : null,
+        cost_basis: hasCostBasis ? round(totalValue - reportedGain, 4) : null,
       },
       { onConflict: "user_id,date" },
     );
@@ -1587,6 +1600,161 @@ async function loadAccessTokens(
     }
   }
   return tokens;
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate links
+// ---------------------------------------------------------------------------
+
+/** The brokerage_connections columns needed to replace a connection. */
+interface ExistingConnection {
+  id: string;
+  plaid_item_id: string;
+}
+
+/**
+ * How an account is recognised across Items. Linking a login again creates
+ * a new Item with new item and account ids, so this uses what Plaid suggests
+ * for spotting duplicates (mask and name), plus type and subtype. Accounts
+ * without a mask or name are never matched, so two different accounts can't
+ * be mistaken for one.
+ */
+function accountFingerprint(account: {
+  name: string | null;
+  mask: string | null;
+  type: string | null;
+  subtype: string | null;
+}): string | null {
+  const mask = str(account.mask);
+  const name = str(account.name);
+  if (!mask || !name) return null;
+  return [str(account.type) ?? "", str(account.subtype) ?? "", mask, name]
+    .map((part) => part.toLowerCase())
+    .join("|");
+}
+
+/**
+ * The user's existing connections at the same institution that hold at least
+ * one of the new Item's accounts. That means the same login was linked again,
+ * for example after the app gave up waiting on the first sync. Keeping both
+ * would count every holding twice. Best effort: any failure means "none".
+ */
+async function findDuplicateConnections(
+  ctx: SyncContext,
+  accessToken: string,
+  institutionId: string | null,
+): Promise<ExistingConnection[]> {
+  if (!institutionId) return [];
+  try {
+    const { data, error } = await ctx.admin
+      .from("brokerage_connections")
+      .select("id, plaid_item_id")
+      .eq("user_id", ctx.userId)
+      .eq("institution_id", institutionId);
+    if (error) throw dbFailure("reading brokerage connections", error);
+    const candidates = rowsOf<ExistingConnection>(data).filter((row) =>
+      str(row.id) && str(row.plaid_item_id)
+    );
+    if (candidates.length === 0) return [];
+
+    const response = await plaidRequest<PlaidAccountsGetResponse>(
+      ctx.plaid,
+      "/accounts/get",
+      { access_token: accessToken },
+    );
+    const linked = new Set<string>();
+    for (const account of records<PlaidAccount>(response.accounts)) {
+      // The same fallbacks storeHoldings uses for the stored rows.
+      const fingerprint = accountFingerprint({
+        name: str(account.name) ?? str(account.official_name),
+        mask: str(account.mask),
+        type: str(account.type) ?? "investment",
+        subtype: str(account.subtype),
+      });
+      if (fingerprint) linked.add(fingerprint);
+    }
+    if (linked.size === 0) return [];
+
+    const duplicateIds = new Set<string>();
+    for (const ids of chunk(candidates.map((c) => c.id), FILTER_CHUNK_SIZE)) {
+      const stored = await selectAll<{
+        connection_id: string;
+        name: unknown;
+        mask: unknown;
+        type: unknown;
+        subtype: unknown;
+      }>(
+        "reading investment accounts",
+        (from, to) =>
+          ctx.admin
+            .from("investment_accounts")
+            .select("id, connection_id, name, mask, type, subtype")
+            .eq("user_id", ctx.userId)
+            .in("connection_id", ids)
+            .order("id")
+            .range(from, to),
+      );
+      for (const row of stored) {
+        const fingerprint = accountFingerprint({
+          name: str(row.name),
+          mask: str(row.mask),
+          type: str(row.type),
+          subtype: str(row.subtype),
+        });
+        if (fingerprint && linked.has(fingerprint)) {
+          duplicateIds.add(row.connection_id);
+        }
+      }
+    }
+    return candidates.filter((c) => duplicateIds.has(c.id));
+  } catch (error) {
+    logPlaidError("duplicate check failed (ignored)", error);
+    return [];
+  }
+}
+
+/**
+ * Revokes and deletes the connections a new link replaces (the cascade takes
+ * their accounts, holdings and transactions). Best effort: a failure is
+ * logged and leaves that connection in place.
+ */
+async function removeReplacedConnections(
+  ctx: SyncContext,
+  replaced: readonly ExistingConnection[],
+): Promise<void> {
+  if (replaced.length === 0) return;
+  let tokens: Map<string, string>;
+  try {
+    tokens = await loadAccessTokens(
+      ctx.admin,
+      ctx.userId,
+      replaced.map((c) => c.plaid_item_id),
+    );
+  } catch (error) {
+    console.error(
+      "[plaid] couldn't read the replaced Plaid items (ignored):",
+      describeUnknown(error),
+    );
+    return;
+  }
+  for (const connection of replaced) {
+    const accessToken = tokens.get(connection.plaid_item_id);
+    if (accessToken) await removePlaidItem(ctx.plaid, accessToken);
+    const { error } = await ctx.admin
+      .from("plaid_items")
+      .delete()
+      .eq("id", connection.plaid_item_id)
+      .eq("user_id", ctx.userId);
+    if (error) {
+      console.error(
+        `[plaid] couldn't remove duplicate connection ${connection.id} (ignored): ${error.message}`,
+      );
+    } else {
+      console.log(
+        `[plaid] replaced duplicate connection ${connection.id} with the new link`,
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1666,6 +1834,13 @@ async function actionExchange(
       (found.name ? truncate(found.name, 200) : null);
   }
 
+  // Looked up before the new rows exist; removed once they're saved.
+  const duplicates = await findDuplicateConnections(
+    ctx,
+    accessToken,
+    institutionId,
+  );
+
   const { data: itemRow, error: itemError } = await ctx.admin
     .from("plaid_items")
     .insert({ user_id: ctx.userId, item_id: itemId, access_token: accessToken })
@@ -1720,6 +1895,11 @@ async function actionExchange(
       connectionError ?? { message: "insert returned no row" },
     );
   }
+
+  // The newest link wins (fresh consent and credentials). Done before the
+  // first sync, which can outlast the app's patience, so the old connection
+  // goes even if the app stops waiting.
+  await removeReplacedConnections(ctx, duplicates);
 
   const counts = await syncConnection(ctx, connection, accessToken);
   await refreshSnapshotSafely(ctx.admin, ctx.userId);

@@ -14,6 +14,7 @@ import UIKit
 
 struct InvestView: View {
     @Environment(PortfolioService.self) private var portfolio
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var isSharing = false
     @State private var toast: BrokerageLinkCenter.Notice?
@@ -36,6 +37,17 @@ struct InvestView: View {
             .toolbar { toolbarContent }
             .refreshable { await pullToRefresh() }
             .task { await loadIfStale() }
+            .onChange(of: scenePhase) { _, phase in
+                // Back from the background (maybe the next day): reload and sync if due.
+                guard phase == .active else { return }
+                Task { await loadIfStale() }
+            }
+            .onChange(of: portfolio.isLoading) { _, isLoading in
+                // A load that ended with neither data nor an error (superseded by a
+                // sign-out, say) mustn't leave the spinner up with nothing coming.
+                guard !isLoading, portfolio.lastLoaded == nil, portfolio.errorMessage == nil else { return }
+                Task { await portfolio.refresh() }
+            }
             .sheet(isPresented: $isSharing) {
                 ComposePostView(prefill: PostDraft(kind: .portfolio, attachment: portfolio.sharedPortfolio(limit: 5)))
             }
@@ -104,14 +116,16 @@ struct InvestView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             if portfolio.hasConnections {
+                // Same rule as the share card: cash alone has nothing to share.
+                let nothingToShare = portfolio.sharedPortfolio(limit: 5).holdings.isEmpty
                 Button {
                     isSharing = true
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
-                // Same rule as the share card: cash alone has nothing to share.
-                .disabled(portfolio.sharedPortfolio(limit: 5).holdings.isEmpty)
+                .disabled(nothingToShare)
                 .accessibilityLabel("Share my portfolio")
+                .accessibilityHint(nothingToShare ? InvestShareCard.nothingToShareText : "")
             }
         }
     }
@@ -150,7 +164,13 @@ struct InvestView: View {
     // MARK: Loading
 
     private func loadIfStale() async {
-        if let last = portfolio.lastLoaded, Date.now.timeIntervalSince(last) < staleAfter { return }
+        if let last = portfolio.lastLoaded, Date.now.timeIntervalSince(last) < staleAfter {
+            // The tables are fresh, but the brokerages may not have synced today.
+            portfolio.syncIfDue()
+            return
+        }
+        // A refresh already under way (started by another screen) finishes on
+        // its own, with data or an error, and syncs if one is due.
         guard !portfolio.isLoading else { return }
         await portfolio.refresh()
     }
@@ -175,6 +195,7 @@ private struct InvestConnectedContent: View {
     var body: some View {
         // Derived values are computed once per render, not per card.
         let positions = portfolio.positions
+        let costBases = portfolio.costBases
         let currency = InvestFormat.currencyCode(holdings: portfolio.holdings, accounts: portfolio.accounts)
         let accountNames = Dictionary(portfolio.accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
 
@@ -198,11 +219,15 @@ private struct InvestConnectedContent: View {
                 onSync: { Task { try? await portfolio.sync() } }
             )
 
-            InvestPerformanceCard(snapshots: portfolio.snapshots, currency: currency)
+            InvestPerformanceCard(
+                snapshots: portfolio.snapshots,
+                currency: currency,
+                costCoverage: InvestChartCostCoverage(holdings: portfolio.holdings)
+            )
 
             InvestAllocationCard(slices: portfolio.allocation, positionCount: positions.count, currency: currency)
 
-            InvestPositionsCard(positions: positions, currency: currency)
+            InvestPositionsCard(positions: positions, costBases: costBases, currency: currency)
 
             InvestShareCard(preview: portfolio.sharedPortfolio(limit: 5), onShare: onShare)
 

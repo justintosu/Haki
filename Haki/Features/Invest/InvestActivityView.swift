@@ -78,6 +78,17 @@ struct InvestActivityView: View {
         let currency = InvestFormat.currencyCode(holdings: portfolio.holdings, accounts: portfolio.accounts)
 
         List {
+            if let message = portfolio.errorMessage {
+                Section {
+                    InvestErrorBanner(
+                        message: message,
+                        onRetry: { Task { await reload() } },
+                        onDismiss: { portfolio.errorMessage = nil }
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                }
+            }
             if filter != .all, !matching.isEmpty {
                 Section {
                     filterBanner(count: matching.count)
@@ -120,16 +131,21 @@ struct InvestActivityView: View {
             }
         }
         .refreshable {
-            if portfolio.hasConnections {
-                try? await portfolio.sync()
-            } else {
-                await portfolio.refresh()
-            }
+            await reload()
         }
         .task {
             if portfolio.lastLoaded == nil {
                 await portfolio.refresh()
             }
+        }
+    }
+
+    /// Pulls from the brokerages when there are any; failures show in the banner.
+    private func reload() async {
+        if portfolio.hasConnections {
+            try? await portfolio.sync()
+        } else {
+            await portfolio.refresh()
         }
     }
 

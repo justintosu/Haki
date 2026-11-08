@@ -11,25 +11,17 @@ import SwiftUI
 
 @main
 struct HakiApp: App {
-    private let container: ModelContainer
+    /// Opens the on-device store at launch. If it can't be opened the app
+    /// shows a recovery screen instead of crashing.
+    @State private var database = AppDatabase()
 
     @State private var auth = AuthService.live
     @State private var social = SocialService.live
     @State private var portfolio = PortfolioService.live
 
-    init() {
-        do {
-            container = try HakiSchema.makeContainer()
-        } catch {
-            fatalError("Haki couldn't open its database: \(error)")
-        }
-        LedgerStore.ensureDefaultCategories(in: container.mainContext)
-    }
-
     var body: some Scene {
         WindowGroup {
-            // Sign-in gate: welcome → onboarding → the tab bar (RootView).
-            AuthGateView()
+            HakiAppRoot(database: database)
                 .environment(auth)
                 .environment(social)
                 .environment(portfolio)
@@ -40,6 +32,20 @@ struct HakiApp: App {
                     }
                 }
         }
-        .modelContainer(container)
+    }
+}
+
+/// The sign-in gate (welcome → onboarding → the tab bar) once the database is
+/// open; the recovery screen while it can't be opened.
+private struct HakiAppRoot: View {
+    let database: AppDatabase
+
+    var body: some View {
+        if let container = database.container {
+            AuthGateView()
+                .modelContainer(container)
+        } else {
+            AppDatabaseRecoveryView(database: database)
+        }
     }
 }

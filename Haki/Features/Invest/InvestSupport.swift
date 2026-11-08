@@ -293,6 +293,8 @@ struct InvestStatTile<Value: View>: View {
     let title: String
     let value: Value
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     init(_ title: String, @ViewBuilder value: () -> Value) {
         self.title = title
         self.value = value()
@@ -306,7 +308,8 @@ struct InvestStatTile<Value: View>: View {
             value
                 .font(.body.weight(.semibold))
                 .monospacedDigit()
-                .lineLimit(1)
+                // At accessibility sizes a long amount wraps rather than being cut off.
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -333,6 +336,87 @@ struct InvestInlineNote: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// Whether the user's profile shows their holdings (as percentages), with the
+/// switch to change it, so connecting a brokerage never publishes them
+/// unannounced. The same setting as Settings → Privacy.
+struct InvestProfileSharingToggle: View {
+    /// Whether a brokerage is connected yet (changes the wording).
+    let isConnected: Bool
+    /// A divider above, shown only along with the switch.
+    var showsDivider = false
+
+    @Environment(AuthService.self) private var auth
+
+    /// The choice while it's being saved (optimistic), `nil` otherwise.
+    @State private var pending: Bool?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        // Unknown until the profile has loaded: say nothing rather than guess.
+        if let saved = auth.profile?.sharePortfolio {
+            VStack(alignment: .leading, spacing: 6) {
+                if showsDivider {
+                    Divider()
+                        .padding(.bottom, 6)
+                }
+                Toggle(isOn: isOn) {
+                    HStack(spacing: 8) {
+                        Text("Show holdings on my profile")
+                            .font(.subheadline.weight(.semibold))
+                        if pending != nil {
+                            ProgressView()
+                                .accessibilityLabel("Saving")
+                        }
+                    }
+                }
+                .disabled(pending != nil)
+                Text(detail(sharing: pending ?? saved))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .authErrorAlert($errorMessage, title: "Couldn't update sharing")
+        }
+    }
+
+    private func detail(sharing: Bool) -> String {
+        guard sharing else {
+            return "Your holdings stay off your profile. You can still share them in a post whenever you like."
+        }
+        let audience = isConnected
+            ? "Anyone on Haki who views your profile sees"
+            : "Once you connect, anyone on Haki who views your profile sees"
+        return audience + " what you hold, each holding's share of your portfolio and your return, in percentages. Dollar amounts stay private."
+    }
+
+    private var isOn: Binding<Bool> {
+        Binding(
+            get: { pending ?? auth.profile?.sharePortfolio ?? false },
+            set: { newValue in
+                guard pending == nil, newValue != auth.profile?.sharePortfolio else { return }
+                pending = newValue
+                Task { await save(newValue) }
+            }
+        )
+    }
+
+    private func save(_ value: Bool) async {
+        defer { pending = nil }
+        do {
+            try await auth.updateProfile(
+                username: nil,
+                displayName: nil,
+                bio: nil,
+                sharePortfolio: value,
+                avatarJPEG: nil
+            )
+        } catch {
+            // The switch falls back to the saved value when `pending` clears.
+            errorMessage = AuthErrorFormatter.message(for: error)
+        }
     }
 }
 
@@ -384,7 +468,8 @@ struct InvestGainLabel: View {
                 InvestLegendItem(title: "Invested", color: .hakiComparison, dashed: true)
             }
             InvestErrorBanner(message: "Couldn't load your investments. Pull to refresh.", onRetry: {}, onDismiss: {})
-            InvestInlineNote(systemImage: "chart.xyaxis.line", text: "History builds up as Haki syncs your accounts each day.")
+            InvestInlineNote(systemImage: "chart.xyaxis.line", text: "Haki records your portfolio's value each day it syncs your accounts.")
+            InvestProfileSharingToggle(isConnected: true)
             InvestToast(message: "Connected Northwind Investing")
         }
         .padding()

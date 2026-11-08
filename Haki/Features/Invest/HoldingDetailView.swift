@@ -23,20 +23,29 @@ struct HoldingDetailView: View {
         let live = portfolio.position(for: position.symbol)
         let current = live ?? position
         let holdings = portfolio.holdings(for: current.symbol)
+        // Gain and average cost count only the holdings that report what was paid.
+        let cost = live == nil ? PositionCostBasis(position: position) : PositionCostBasis(holdings: holdings)
         let currency = InvestFormat.currencyCode(holdings: portfolio.holdings, accounts: portfolio.accounts)
         let activity = relatedTransactions(for: current)
         let isShareable = InvestStyle.isShareableTicker(current)
 
         ScrollView {
             VStack(spacing: 16) {
+                if let message = portfolio.errorMessage {
+                    InvestErrorBanner(
+                        message: message,
+                        onRetry: { Task { try? await portfolio.sync() } },
+                        onDismiss: { portfolio.errorMessage = nil }
+                    )
+                }
                 if live == nil, portfolio.lastLoaded != nil {
                     InvestInlineNote(
                         systemImage: "info.circle",
                         text: "This position no longer appears in your connected accounts. These are the last values Haki saw."
                     )
                 }
-                HoldingHeaderCard(position: current, currency: currency)
-                HoldingStatsCard(position: current, holdings: holdings, currency: currency)
+                HoldingHeaderCard(position: current, cost: cost, currency: currency)
+                HoldingStatsCard(position: current, cost: cost, holdings: holdings, currency: currency)
                 if !holdings.isEmpty {
                     accountsCard(holdings, position: current, currency: currency)
                 }
@@ -259,6 +268,7 @@ struct HoldingComposeRequest: Identifiable {
 
 private struct HoldingHeaderCard: View {
     let position: PortfolioPosition
+    let cost: PositionCostBasis
     let currency: String
 
     var body: some View {
@@ -296,7 +306,7 @@ private struct HoldingHeaderCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 if !position.isCash {
-                    InvestGainLabel(gain: position.gain, gainPct: position.gainPct, currency: currency)
+                    InvestGainLabel(gain: cost.gain, gainPct: cost.gainPct, currency: currency)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -309,42 +319,50 @@ private struct HoldingHeaderCard: View {
 
 private struct HoldingStatsCard: View {
     let position: PortfolioPosition
+    let cost: PositionCostBasis
     let holdings: [BrokerageHolding]
     let currency: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             CardHeader("Details", systemImage: "list.bullet")
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 16) {
-                if position.isCash {
-                    GridRow {
-                        InvestStatTile("Balance") {
-                            Text(InvestFormat.money(position.value, currency: currency))
-                        }
+            if dynamicTypeSize.isAccessibilitySize {
+                // One column, so large values aren't cut off.
+                VStack(alignment: .leading, spacing: 14) {
+                    if position.isCash {
+                        balanceTile
+                        weightTile
+                    } else {
+                        quantityTile
+                        priceTile
+                        averageCostTile
+                        totalCostTile
+                        returnTile
                         weightTile
                     }
-                } else {
-                    GridRow {
-                        InvestStatTile(quantityTitle) {
-                            Text(InvestFormat.quantity(position.quantity))
+                }
+            } else {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 16) {
+                    if position.isCash {
+                        GridRow {
+                            balanceTile
+                            weightTile
                         }
-                        InvestStatTile("Price") {
-                            Text(priceText)
+                    } else {
+                        GridRow {
+                            quantityTile
+                            priceTile
                         }
-                    }
-                    GridRow {
-                        InvestStatTile("Average cost") {
-                            Text(averageCostText)
+                        GridRow {
+                            averageCostTile
+                            totalCostTile
                         }
-                        InvestStatTile("Total cost") {
-                            Text(position.costBasis.map { InvestFormat.money($0, currency: currency) } ?? "—")
+                        GridRow {
+                            returnTile
+                            weightTile
                         }
-                    }
-                    GridRow {
-                        InvestStatTile("Total return") {
-                            PercentChangeText(percent: position.gainPct)
-                        }
-                        weightTile
                     }
                 }
             }
@@ -353,14 +371,61 @@ private struct HoldingStatsCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if !position.isCash, position.costBasis == nil {
-                Text("Your brokerage didn't report what you paid, so gain can't be calculated.")
+            if !position.isCash, let note = costNote {
+                Text(note)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .hakiCard()
+    }
+
+    private var balanceTile: some View {
+        InvestStatTile("Balance") {
+            Text(InvestFormat.money(position.value, currency: currency))
+        }
+    }
+
+    private var quantityTile: some View {
+        InvestStatTile(quantityTitle) {
+            Text(InvestFormat.quantity(position.quantity))
+        }
+    }
+
+    private var priceTile: some View {
+        InvestStatTile("Price") {
+            Text(priceText)
+        }
+    }
+
+    private var averageCostTile: some View {
+        InvestStatTile("Average cost") {
+            Text(averageCostText)
+        }
+    }
+
+    private var totalCostTile: some View {
+        InvestStatTile("Total cost") {
+            Text(cost.costBasis.map { InvestFormat.money($0, currency: currency) } ?? "—")
+        }
+    }
+
+    private var returnTile: some View {
+        InvestStatTile("Total return") {
+            PercentChangeText(percent: cost.gainPct)
+        }
+    }
+
+    /// Explains a missing or partial cost basis.
+    private var costNote: String? {
+        if cost.costBasis == nil {
+            return "Your brokerage didn't report what you paid, so gain can't be calculated."
+        }
+        guard cost.isPartial else { return nil }
+        let covered = InvestFormat.quantity(cost.quantity)
+        let total = InvestFormat.shares(cost.totalQuantity, securityType: position.securityType, symbol: position.symbol)
+        return "Cost and return count \(covered) of your \(total). Your brokerage didn't report what you paid for the rest."
     }
 
     private var weightTile: some View {
@@ -390,8 +455,7 @@ private struct HoldingStatsCard: View {
     }
 
     private var averageCostText: String {
-        guard let costBasis = position.costBasis, position.quantity > 0 else { return "—" }
-        return InvestFormat.price(costBasis / position.quantity, currency: currency)
+        cost.averageCost.map { InvestFormat.price($0, currency: currency) } ?? "—"
     }
 
     private var priceAsOfText: String? {

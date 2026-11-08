@@ -29,12 +29,23 @@ extension Color {
     static let hakiBackground = Color(uiColor: .systemGroupedBackground)
     /// Card surface.
     static let hakiCardBackground = Color(uiColor: .secondarySystemGroupedBackground)
-    /// Money coming in.
-    static let hakiPositive = Color(hex: "#1FA67A")
+    /// Money coming in. Darker in light mode so small green text stays
+    /// readable on white cards (about 5.3:1 there, about 5:1 on dark cards).
+    static let hakiPositive = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 31.0 / 255, green: 166.0 / 255, blue: 122.0 / 255, alpha: 1)
+            : UIColor(red: 19.0 / 255, green: 122.0 / 255, blue: 87.0 / 255, alpha: 1)
+    })
     /// Over budget, late bills, money owed.
     static let hakiNegative = Color(uiColor: .systemRed)
-    /// Spending faster than the budget's pace.
-    static let hakiWarning = Color(uiColor: .systemOrange)
+    /// Spending faster than the budget's pace; things that need attention.
+    /// A deeper orange in light mode, because system orange is too light for
+    /// text on white (about 5.2:1 instead of 2.2:1).
+    static let hakiWarning = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.systemOrange.resolvedColor(with: traits)
+            : UIColor(red: 178.0 / 255, green: 80.0 / 255, blue: 0, alpha: 1)
+    })
     /// Last month / comparison lines in charts.
     static let hakiComparison = Color(uiColor: .systemGray3)
 }
@@ -85,9 +96,11 @@ struct CardHeader: View {
             if let systemImage {
                 Label(title, systemImage: systemImage)
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             } else {
                 Text(title)
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             }
             Spacer()
             if let actionTitle, let action {

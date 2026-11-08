@@ -31,6 +31,16 @@ import Supabase
     @ObservationIgnored private var refreshGeneration = 0
     @ObservationIgnored private var refreshesInFlight = 0
     @ObservationIgnored private var syncsInFlight = 0
+    /// Bumped by `reset()` (sign-out) only, so work started for the previous session stops.
+    @ObservationIgnored private var sessionGeneration = 0
+    /// When a sync (manual or automatic) last started, for throttling `syncIfDue()`.
+    @ObservationIgnored private var lastSyncAttempt: Date?
+
+    /// How long a connection may go without syncing before `syncIfDue()` pulls fresh data.
+    private static let autoSyncAge: TimeInterval = 12 * 3600
+    /// The least time between automatic attempts: a connection that keeps failing
+    /// never advances `last_synced_at`, and mustn't call the brokerage on every refresh.
+    private static let autoSyncRetryInterval: TimeInterval = 3 * 3600
 
     /// `nil` = preview mode with sample holdings.
     init(client: SupabaseClient?) {
@@ -56,6 +66,19 @@ import Supabase
     var positions: [PortfolioPosition] { PortfolioMath.positions(holdings.map(\.input)) }
 
     var totals: PortfolioTotals { PortfolioMath.totals(holdings.map(\.input)) }
+
+    /// Cost and return per position `symbol` (the keys of `positions`), counting
+    /// only the holdings that report what was paid.
+    var costBases: [String: PositionCostBasis] {
+        Dictionary(grouping: holdings.filter { $0.value > 0 }) { holding -> String in
+            // The same key `PortfolioMath.positions` merges by.
+            if let ticker = holding.ticker?.trimmingCharacters(in: .whitespaces), !ticker.isEmpty {
+                return ticker.uppercased()
+            }
+            return holding.name
+        }
+        .mapValues { PositionCostBasis(holdings: $0) }
+    }
 
     /// By asset class, largest first.
     var allocation: [AllocationSlice] { PortfolioMath.allocation(holdings.map(\.input)) }
@@ -90,7 +113,8 @@ import Supabase
 
     // MARK: Loading
 
-    /// Reloads every table from the database.
+    /// Reloads every table from the database, then starts a background sync
+    /// when the brokerages are due for one (see `syncIfDue()`).
     func refresh() async {
         guard let client else {
             lastLoaded = .now
@@ -106,7 +130,10 @@ import Supabase
         }
 
         do {
-            let tables = try await Self.fetchTables(client)
+            // Its own task, so leaving the screen that started the refresh doesn't
+            // cancel it: other screens skip loading while one is in flight, so it
+            // has to end with either data or an error.
+            let tables = try await Task { try await PortfolioService.fetchTables(client) }.value
             guard generation == refreshGeneration else { return }
             connections = tables.connections
             accounts = tables.accounts
@@ -115,6 +142,7 @@ import Supabase
             snapshots = tables.snapshots
             lastLoaded = .now
             errorMessage = nil
+            syncIfDue()
         } catch {
             guard generation == refreshGeneration, !Backend.isCancellation(error) else { return }
             errorMessage = Backend.userFacingError(error, fallback: "Couldn't load your investments. Pull to refresh.")
@@ -137,9 +165,13 @@ import Supabase
         }
     }
 
-    /// Exchanges the public token (edge function), then refreshes.
+    /// Exchanges the public token (edge function), then refreshes. Refreshes on
+    /// failure too: the server may have saved the connection before its reply
+    /// was lost, and it should show up rather than invite linking it twice.
     func completeLink(publicToken: String, institutionID: String?, institutionName: String?) async throws {
         guard client != nil else { return }
+        let knownConnectionIDs: Set<UUID>? = lastLoaded == nil ? nil : Set(connections.map(\.id))
+        lastSyncAttempt = .now
         beginSync()
         defer { endSync() }
         let request = PortfolioPlaidRequest(
@@ -148,13 +180,74 @@ import Supabase
             institutionID: institutionID,
             institutionName: institutionName
         )
-        try await invokePlaid(request)
+        do {
+            try await invokePlaid(request)
+        } catch {
+            await refresh()
+            scheduleFollowUpSync(knownConnectionIDs: knownConnectionIDs)
+            throw error
+        }
         await refresh()
+        scheduleFollowUpSync(knownConnectionIDs: knownConnectionIDs)
     }
 
     /// Pulls fresh data from the brokerages (edge function), then refreshes.
     func sync() async throws {
+        try await performSync(reportsErrors: true)
+    }
+
+    /// Starts a background sync when a connection hasn't synced for about half
+    /// a day, so holdings stay current and the performance history gains a
+    /// point each day Haki is used. Returns right away; the sync's errors
+    /// aren't reported (the connection rows show their status).
+    func syncIfDue() {
+        guard client != nil, !isSyncing, isSyncDue(now: .now) else { return }
+        lastSyncAttempt = .now
+        let session = sessionGeneration
+        // Unstructured, so leaving the screen doesn't cancel the edge-function call.
+        Task {
+            guard session == self.sessionGeneration else { return }
+            try? await self.performSync(reportsErrors: false)
+        }
+    }
+
+    func removeConnection(_ connection: BrokerageConnection) async throws {
+        if client != nil {
+            let request = PortfolioPlaidRequest(action: "remove", connectionID: connection.id.uuidString.lowercased())
+            do {
+                try await invokePlaid(request)
+            } catch let error as BackendError where error.code == "not_found" {
+                // Already gone on the server (removed on another device, or an
+                // earlier attempt whose reply was lost): finish removing it here.
+            }
+        }
+        removeLocally(connection.id)
+        if client != nil {
+            await refresh()
+        }
+    }
+
+    /// Clears everything (on sign-out).
+    func reset() {
+        refreshGeneration += 1
+        sessionGeneration += 1
+        lastSyncAttempt = nil
+        connections = []
+        accounts = []
+        holdings = []
+        transactions = []
+        snapshots = []
+        lastLoaded = nil
+        errorMessage = nil
+    }
+
+    // MARK: - Helpers
+
+    private func performSync(reportsErrors: Bool) async throws {
         guard client != nil else { return }
+        let session = sessionGeneration
+        // Before the refresh below, which would otherwise start an automatic sync too.
+        lastSyncAttempt = .now
         if lastLoaded == nil {
             await refresh()
         }
@@ -166,38 +259,48 @@ import Supabase
         do {
             try await invokePlaid(PortfolioPlaidRequest(action: "sync"))
         } catch {
-            if !Backend.isCancellation(error) {
+            if reportsErrors, session == sessionGeneration, !Backend.isCancellation(error) {
                 errorMessage = error.localizedDescription
             }
             throw error
         }
+        // Signed out meanwhile: don't load the next session's data as this one's.
+        guard session == sessionGeneration else { return }
         await refresh()
     }
 
-    func removeConnection(_ connection: BrokerageConnection) async throws {
-        if client != nil {
-            let request = PortfolioPlaidRequest(action: "remove", connectionID: connection.id.uuidString.lowercased())
-            try await invokePlaid(request)
+    /// Whether a connection that can sync hasn't for `autoSyncAge`, and no sync
+    /// was attempted recently.
+    private func isSyncDue(now: Date) -> Bool {
+        if let lastSyncAttempt, now.timeIntervalSince(lastSyncAttempt) < Self.autoSyncRetryInterval {
+            return false
         }
-        removeLocally(connection.id)
-        if client != nil {
-            await refresh()
+        // These wait for the user (sign in again, relink); syncing won't fix them.
+        let syncable = connections.filter { $0.status != "needs_attention" }
+        return syncable.contains { connection in
+            guard let last = connection.lastSyncedAt else { return true }
+            return now.timeIntervalSince(last) >= Self.autoSyncAge
         }
     }
 
-    /// Clears everything (on sign-out).
-    func reset() {
-        refreshGeneration += 1
-        connections = []
-        accounts = []
-        holdings = []
-        transactions = []
-        snapshots = []
-        lastLoaded = nil
-        errorMessage = nil
-    }
+    /// Right after linking, Plaid often isn't ready with holdings or
+    /// transactions yet (the server skips them until it is). If the new
+    /// connection came back without them, sync once more a little later.
+    private func scheduleFollowUpSync(knownConnectionIDs: Set<UUID>?) {
+        let added = Set(connections.map(\.id)).subtracting(knownConnectionIDs ?? Set<UUID>())
+        guard !added.isEmpty else { return }
+        let addedAccountIDs = Set(accounts.filter { added.contains($0.connectionID) }.map(\.id))
+        let hasHoldings = holdings.contains { addedAccountIDs.contains($0.accountID) }
+        let hasTransactions = transactions.contains { addedAccountIDs.contains($0.accountID) }
+        guard !hasHoldings || !hasTransactions else { return }
 
-    // MARK: - Helpers
+        let session = sessionGeneration
+        Task {
+            try? await Task.sleep(for: .seconds(90))
+            guard session == self.sessionGeneration, self.hasConnections, !self.isSyncing else { return }
+            try? await self.performSync(reportsErrors: false)
+        }
+    }
 
     private func beginSync() {
         syncsInFlight += 1
@@ -284,12 +387,13 @@ import Supabase
             .limit(500)
             .execute()
             .value
-        // Newest ~3 years, put back in chronological order below.
+        // Newest ~13 months (the chart's widest range is a year), put back in
+        // chronological order below.
         async let recentSnapshots: [PortfolioSnapshot] = client
             .from("portfolio_snapshots")
             .select("date,total_value,cost_basis")
             .order("date", ascending: false)
-            .limit(1100)
+            .limit(400)
             .execute()
             .value
 
@@ -301,6 +405,78 @@ import Supabase
             snapshots: try await recentSnapshots.reversed()
         )
     }
+}
+
+// MARK: - Cost basis
+
+/// A position's cost and return counting only the holdings that report what
+/// was paid, as `PortfolioTotals` does. (`PortfolioPosition.gain` compares
+/// the whole position's value with that partial cost, so lots without a cost
+/// basis would count as pure gain.)
+nonisolated struct PositionCostBasis: Hashable {
+    /// What was paid for the holdings that report it; `nil` when none does.
+    let costBasis: Double?
+    /// Shares (or units) of the holdings that report a cost basis.
+    let quantity: Double
+    /// Value of the holdings that report a cost basis.
+    let value: Double
+    /// Shares of the whole position.
+    let totalQuantity: Double
+    /// Value of the whole position.
+    let totalValue: Double
+
+    /// One position's holdings (any account). Holdings worth nothing are
+    /// skipped, as in `PortfolioMath.positions`.
+    init(holdings: [BrokerageHolding]) {
+        var cost = 0.0
+        var quantity = 0.0
+        var value = 0.0
+        var totalQuantity = 0.0
+        var totalValue = 0.0
+        var hasCost = false
+        for holding in holdings where holding.value > 0 {
+            totalQuantity += holding.quantity
+            totalValue += holding.value
+            if let basis = holding.costBasis, basis > 0 {
+                hasCost = true
+                cost += basis
+                quantity += holding.quantity
+                value += holding.value
+            }
+        }
+        self.costBasis = hasCost ? cost : nil
+        self.quantity = quantity
+        self.value = value
+        self.totalQuantity = totalQuantity
+        self.totalValue = totalValue
+    }
+
+    /// When the holdings aren't known: the position's own (all-or-nothing) figures.
+    init(position: PortfolioPosition) {
+        let hasCost = (position.costBasis ?? 0) > 0
+        costBasis = hasCost ? position.costBasis : nil
+        quantity = hasCost ? position.quantity : 0
+        value = hasCost ? position.value : 0
+        totalQuantity = position.quantity
+        totalValue = position.value
+    }
+
+    var gain: Double? { costBasis.map { value - $0 } }
+
+    /// Return on cost, in percent.
+    var gainPct: Double? {
+        guard let costBasis, costBasis > 0 else { return nil }
+        return (value - costBasis) / costBasis * 100
+    }
+
+    /// Cost per share of the holdings that report one.
+    var averageCost: Double? {
+        guard let costBasis, quantity > 0 else { return nil }
+        return costBasis / quantity
+    }
+
+    /// Some of the position (by value) has no reported cost basis.
+    var isPartial: Bool { costBasis != nil && value + 0.005 < totalValue }
 }
 
 // MARK: - Request and response bodies

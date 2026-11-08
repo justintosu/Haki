@@ -136,28 +136,39 @@ import UIKit
         institutionID: String?,
         institutionName: String?
     ) async {
+        // Known only once loaded: otherwise every existing connection would look new.
+        let knownConnectionIDs: Set<UUID>? = portfolio.lastLoaded == nil ? nil : Set(portfolio.connections.map(\.id))
         do {
             try await portfolio.completeLink(
                 publicToken: publicToken,
                 institutionID: institutionID,
                 institutionName: institutionName
             )
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            // Let the screen settle first: a first connection usually replaces
-            // the empty state that hosts this button.
-            try? await Task.sleep(for: .milliseconds(450))
-            phase = .idle
-            let name = institutionName ?? "your brokerage"
-            if isOnScreen {
-                present(BrokerageLinkAlert.connected(name))
-            } else {
-                BrokerageLinkCenter.shared.unannounced = BrokerageLinkCenter.Notice(institutionName: name)
-            }
         } catch {
-            phase = .idle
-            if !Backend.isCancellation(error) {
-                present(BrokerageLinkAlert.failure(error))
+            // The reply can be lost (dropped network, app suspended) after the
+            // server saved the connection; `completeLink` reloads, and a new
+            // connection means it worked. Saying otherwise invites linking twice.
+            let appeared = knownConnectionIDs.map { known in
+                portfolio.connections.contains { !known.contains($0.id) }
+            } ?? false
+            guard appeared else {
+                phase = .idle
+                if !Backend.isCancellation(error) {
+                    present(BrokerageLinkAlert.failure(error))
+                }
+                return
             }
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        // Let the screen settle first: a first connection usually replaces
+        // the empty state that hosts this button.
+        try? await Task.sleep(for: .milliseconds(450))
+        phase = .idle
+        let name = institutionName ?? "your brokerage"
+        if isOnScreen {
+            present(BrokerageLinkAlert.connected(name))
+        } else {
+            BrokerageLinkCenter.shared.unannounced = BrokerageLinkCenter.Notice(institutionName: name)
         }
     }
 

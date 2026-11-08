@@ -41,15 +41,25 @@ struct CategoryIcon: View {
 // MARK: - Amounts
 
 /// A transaction amount: money out as "$12.34", money in as "+$12.34" in green.
+/// Excluded amounts are struck through, and VoiceOver says they're excluded.
 struct TransactionAmountText: View {
     let cents: Int
     var isExcluded: Bool = false
 
     var body: some View {
-        Text(cents < 0 ? Money.format(-cents, alwaysShowsSign: true) : Money.format(cents))
+        Text(formatted)
             .monospacedDigit()
             .foregroundStyle(isExcluded ? Color.secondary : (cents < 0 ? Color.hakiPositive : Color.primary))
             .strikethrough(isExcluded)
+            .accessibilityLabel(accessibilityText)
+    }
+
+    private var formatted: String {
+        cents < 0 ? Money.format(-cents, alwaysShowsSign: true) : Money.format(cents)
+    }
+
+    private var accessibilityText: String {
+        isExcluded ? "\(formatted), excluded from totals" : formatted
     }
 }
 
@@ -139,15 +149,30 @@ struct BudgetBar: View {
         .frame(height: height)
         .accessibilityElement()
         .accessibilityLabel("Budget used")
-        .accessibilityValue("\(Int((progress.fractionUsed * 100).rounded())) percent")
+        .accessibilityValue(accessibilityValueText)
     }
 
     private var barColor: Color {
         if progress.isOverBudget { return .hakiNegative }
-        if let monthFraction, progress.fractionUsed > monthFraction * 1.1, progress.fractionUsed > 0.5 {
-            return .hakiWarning
-        }
+        if isAheadOfPace { return .hakiWarning }
         return tint
+    }
+
+    /// Spending is well ahead of how much of the month has passed (the orange state).
+    private var isAheadOfPace: Bool {
+        guard let monthFraction else { return false }
+        return progress.fractionUsed > monthFraction * 1.1 && progress.fractionUsed > 0.5
+    }
+
+    /// The same states the colors and the month tick show, e.g. "62 percent,
+    /// ahead of pace, 40 percent of the month gone" or "112 percent, over budget".
+    private var accessibilityValueText: String {
+        let used = "\(Int((progress.fractionUsed * 100).rounded())) percent"
+        if progress.isOverBudget { return "\(used), over budget" }
+        guard let monthFraction else { return used }
+        let pace = isAheadOfPace ? "ahead of pace" : "on track"
+        guard monthFraction > 0, monthFraction < 1 else { return "\(used), \(pace)" }
+        return "\(used), \(pace), \(Int((monthFraction * 100).rounded())) percent of the month gone"
     }
 }
 
