@@ -103,6 +103,7 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             profile = sample
             userID = sample.id
             email = "you@example.com"
+            signsInWithPassword = true
         } else {
             state = .loading
         }
@@ -197,8 +198,9 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         if let name = pendingAppleDisplayName, let current = profile, current.id == session.user.id,
            current.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let changes = ProfileChanges(displayName: name)
+            // A row saved before onboarding finished mustn't replace the onboarded profile.
             if let updated = try? await saveProfileChanges(changes, userID: current.id, client: client),
-               userID == updated.id {
+               userID == updated.id, updated.onboarded || profile?.onboarded != true {
                 applyProfile(updated)
             }
         }

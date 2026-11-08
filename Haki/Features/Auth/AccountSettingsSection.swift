@@ -3,7 +3,7 @@
 //  Haki
 //
 //  The account part of Settings: who's signed in, editing the profile,
-//  portfolio sharing, signing out and deleting the account. Embedded in
+//  changing the password, portfolio sharing, signing out and deleting the account. Embedded in
 //  SettingsView's list as a few `Section`s.
 //
 

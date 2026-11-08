@@ -16,7 +16,7 @@ struct AuthGateView: View {
     @Environment(PortfolioService.self) private var portfolio
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Follows `auth.isRecoveringPassword`, a moment late (see the `.task` below).
+    /// Follows `asksForNewPassword`, a moment late (see the `.task` below).
     @State private var showingNewPassword = false
 
     var body: some View {
@@ -60,16 +60,25 @@ struct AuthGateView: View {
         }) {
             AuthSetNewPasswordView()
         }
-        .task(id: auth.isRecoveringPassword) {
-            guard auth.isRecoveringPassword else {
-                showingNewPassword = false
+        .task(id: asksForNewPassword) {
+            guard asksForNewPassword else {
+                // Keep an open sheet through state changes; close it once recovery ends.
+                if !auth.isRecoveringPassword {
+                    showingNewPassword = false
+                }
                 return
             }
-            // Let the previous screen's sheet (e.g. email sign-in) finish closing first.
+            // Let the welcome screen's sheet (email sign-in) finish closing first.
             try? await Task.sleep(for: .milliseconds(700))
-            guard !Task.isCancelled, auth.isRecoveringPassword else { return }
+            guard !Task.isCancelled, asksForNewPassword else { return }
             showingNewPassword = true
         }
+    }
+
+    /// A reset link was opened and the account's screen is up (so the welcome
+    /// screen, and any sheet it had open, is gone).
+    private var asksForNewPassword: Bool {
+        auth.isRecoveringPassword && (auth.state == .signedIn || auth.state == .needsOnboarding)
     }
 }
 
