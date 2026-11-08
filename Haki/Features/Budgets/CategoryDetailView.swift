@@ -2,9 +2,12 @@
 //  CategoryDetailView.swift
 //  Haki
 //
-//  PLACEHOLDER: replaced by the feature implementation.
+//  One category for one month: spending against its budget (or income
+//  received), the last six months as a bar chart with the budget as a dashed
+//  rule, the six-month average, and the month's transactions.
 //
 
+import Charts
 import Foundation
 import SwiftData
 import SwiftUI
@@ -13,12 +16,550 @@ struct CategoryDetailView: View {
     let category: TransactionCategory
     let month: MonthInterval
 
+    /// Filtered in memory (a predicate can't follow the category relationship),
+    /// so recategorized and edited transactions are always reflected.
+    @Query(sort: \TransactionRecord.date, order: .reverse)
+    private var transactions: [TransactionRecord]
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var displayedMonth: MonthInterval
+    @State private var showsEditor = false
+
+    init(category: TransactionCategory, month: MonthInterval) {
+        self.category = category
+        self.month = month
+        _displayedMonth = State(initialValue: month)
+    }
+
     var body: some View {
-        Text("CategoryDetailView")
+        Group {
+            if isGone {
+                ContentUnavailableView(
+                    "Category deleted",
+                    systemImage: "trash",
+                    description: Text("This category no longer exists.")
+                )
+            } else {
+                content(CategoryDetailData(category: category, transactions: transactions, month: displayedMonth))
+            }
+        }
+        .background(Color.hakiBackground)
+        .navigationTitle(isGone ? "" : category.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") {
+                    showsEditor = true
+                }
+                .disabled(isGone)
+            }
+        }
+        .sheet(isPresented: $showsEditor, onDismiss: { closeIfDeleted() }) {
+            CategoryEditorView(category: category)
+        }
+    }
+
+    /// The category was deleted (from the editor sheet or elsewhere). Checked
+    /// before reading any of its properties.
+    private var isGone: Bool {
+        category.isDeleted || category.modelContext == nil
+    }
+
+    private func closeIfDeleted() {
+        if isGone { dismiss() }
+    }
+
+    private var categoryColor: Color {
+        Color(hex: category.colorHex)
+    }
+
+    private func content(_ data: CategoryDetailData) -> some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                headerCard(data)
+                historyCard(data)
+                transactionsCard(data)
+            }
+            .padding(.horizontal)
+            .padding(.bottom)
+            .animation(.snappy, value: displayedMonth)
+        }
+    }
+
+    // MARK: Header
+
+    private func headerCard(_ data: CategoryDetailData) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                CategoryIcon(category: category, size: 52)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(category.name)
+                        .font(.title2.weight(.bold))
+                    Text(kindSubtitle(data))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+
+            MonthSwitcher(month: $displayedMonth)
+
+            amountBlock(data)
+            budgetBlock(data)
+        }
+        .hakiCard()
+    }
+
+    private func kindSubtitle(_ data: CategoryDetailData) -> String {
+        switch data.kind {
+        case .expense:
+            if let budget = data.budgetCents {
+                return "Spending · \(Money.format(budget, showsCents: false)) a month"
+            }
+            return "Spending · No budget"
+        case .income:
+            return "Income"
+        case .transfer:
+            return "Transfer"
+        }
+    }
+
+    private func amountBlock(_ data: CategoryDetailData) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(amountCaption(data))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(amountText(data))
+                .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(data.kind == .income && data.amountCents > 0 ? Color.hakiPositive : Color.primary)
+            if let budgetLine = budgetLineText(data) {
+                Text(budgetLine)
+                    .font(.subheadline)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func amountCaption(_ data: CategoryDetailData) -> String {
+        let monthName = data.month.title()
+        switch data.kind {
+        case .expense: return "Spent in \(monthName)"
+        case .income: return "Received in \(monthName)"
+        case .transfer: return "Moved in \(monthName)"
+        }
+    }
+
+    private func amountText(_ data: CategoryDetailData) -> String {
+        if data.kind == .income && data.amountCents > 0 {
+            return Money.format(data.amountCents, alwaysShowsSign: true)
+        }
+        return Money.format(data.amountCents)
+    }
+
+    private func budgetLineText(_ data: CategoryDetailData) -> String? {
+        guard let budget = data.budgetCents else { return nil }
+        return "of \(Money.format(budget, showsCents: false)) budget"
+    }
+
+    @ViewBuilder
+    private func budgetBlock(_ data: CategoryDetailData) -> some View {
+        switch data.kind {
+        case .expense:
+            if let progress = data.progress {
+                budgetProgress(progress, data: data)
+            } else {
+                noBudgetPrompt
+            }
+        case .income:
+            Label("Income counts toward your cash flow, not your budgets.", systemImage: "arrow.down.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        case .transfer:
+            Label("Transfers between your own accounts aren't counted as spending or income.", systemImage: "arrow.left.arrow.right")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func budgetProgress(_ progress: BudgetProgress, data: CategoryDetailData) -> some View {
+        let pace = paceStyle(progress, data: data)
+        return VStack(alignment: .leading, spacing: 10) {
+            BudgetBar(progress: progress, tint: categoryColor, monthFraction: data.monthFraction, height: 10)
+            Text(remainingText(progress))
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(progress.isOverBudget ? Color.hakiNegative : Color.primary)
+            Label(pace.title, systemImage: pace.systemImage)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(pace.color)
+            if let projection = projectionText(progress, data: data) {
+                Text(projection)
+                    .font(.subheadline)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func remainingText(_ progress: BudgetProgress) -> String {
+        let remaining = progress.remainingCents
+        if remaining < 0 {
+            return "\(Money.format(-remaining)) over budget"
+        }
+        return "\(Money.format(remaining)) left"
+    }
+
+    private func paceStyle(_ progress: BudgetProgress, data: CategoryDetailData) -> CategoryPaceStyle {
+        switch progress.pace(elapsedDays: data.elapsedDays, daysInMonth: data.daysInMonth) {
+        case .overBudget:
+            return CategoryPaceStyle(title: "Over budget", systemImage: "exclamationmark.triangle.fill", color: Color.hakiNegative)
+        case .aheadOfPace:
+            return CategoryPaceStyle(title: "Spending faster than planned", systemImage: "speedometer", color: Color.hakiWarning)
+        case .onTrack:
+            let title = data.isCurrentMonth ? "On track" : "Stayed within budget"
+            return CategoryPaceStyle(title: title, systemImage: "checkmark.circle.fill", color: Color.hakiPositive)
+        }
+    }
+
+    private func projectionText(_ progress: BudgetProgress, data: CategoryDetailData) -> String? {
+        guard data.isCurrentMonth, data.elapsedDays > 0 else { return nil }
+        let projected = progress.projectedCents(elapsedDays: data.elapsedDays, daysInMonth: data.daysInMonth)
+        return "Projected: \(Money.format(projected, showsCents: false)) by month end"
+    }
+
+    private var noBudgetPrompt: some View {
+        HStack(spacing: 12) {
+            Text("No monthly budget")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Button("Set budget") {
+                showsEditor = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    // MARK: History
+
+    private func historyCard(_ data: CategoryDetailData) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CardHeader("Last 6 months", systemImage: "chart.bar.xaxis")
+            if data.activeMonthCount == 0 && data.budgetCents == nil {
+                Text(noHistoryText(data))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                CategoryHistoryChart(
+                    totals: data.monthTotals,
+                    selectedMonth: data.month,
+                    budgetCents: data.budgetCents,
+                    tint: categoryColor,
+                    valueNoun: valueNoun(data.kind)
+                )
+                .frame(height: 180)
+            }
+            Divider()
+            HStack(alignment: .top, spacing: 12) {
+                CategoryDetailStat(
+                    title: "6-month average",
+                    value: Money.format(data.averageCents, showsCents: false)
+                )
+                CategoryDetailStat(
+                    title: data.isCurrentMonth ? "So far vs. average" : "Compared with average",
+                    value: comparisonText(data)
+                )
+            }
+        }
+        .hakiCard()
+    }
+
+    private func valueNoun(_ kind: CategoryKind) -> String {
+        switch kind {
+        case .expense: return "spent"
+        case .income: return "received"
+        case .transfer: return "moved"
+        }
+    }
+
+    private func noHistoryText(_ data: CategoryDetailData) -> String {
+        "Nothing \(valueNoun(data.kind)) in \(category.name) in the last 6 months."
+    }
+
+    /// "$45 below" / "$30 above" / "About average".
+    private func comparisonText(_ data: CategoryDetailData) -> String {
+        guard data.averageCents != 0 else { return "—" }
+        let difference = data.amountCents - data.averageCents
+        if abs(difference) < 100 { return "About average" }
+        let amount = Money.format(abs(difference), showsCents: false)
+        return difference > 0 ? "\(amount) above" : "\(amount) below"
+    }
+
+    // MARK: Transactions
+
+    private func transactionsCard(_ data: CategoryDetailData) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Transactions")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Text(countText(data.monthTransactions.count))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            if data.monthTransactions.isEmpty {
+                Text(noTransactionsText(data))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                transactionRows(data.monthTransactions)
+            }
+        }
+        .hakiCard()
+    }
+
+    private func transactionRows(_ rows: [TransactionRecord]) -> some View {
+        let lastID = rows.last?.id
+        return VStack(alignment: .leading, spacing: 10) {
+            ForEach(rows) { transaction in
+                NavigationLink {
+                    TransactionDetailView(transaction: transaction)
+                } label: {
+                    TransactionRow(transaction: transaction, showsDate: true)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if transaction.id != lastID {
+                    Divider()
+                        .padding(.leading, 48)
+                }
+            }
+        }
+    }
+
+    private func countText(_ count: Int) -> String {
+        count == 1 ? "1 transaction" : "\(count) transactions"
+    }
+
+    private func noTransactionsText(_ data: CategoryDetailData) -> String {
+        "No \(category.name) transactions in \(data.month.title())."
     }
 }
 
-#Preview {
-    CategoryDetailView(category: PreviewData.sampleCategory, month: .current())
-        .previewEnvironment()
+// MARK: - Data
+
+/// Everything the detail screen shows for the displayed month.
+private struct CategoryDetailData {
+    let month: MonthInterval
+    let kind: CategoryKind
+    /// Only for expense categories with a budget.
+    let budgetCents: Int?
+    /// Spent (expense), received (income) or moved out (transfer) this month.
+    let amountCents: Int
+    /// The six months ending with `month`, oldest first.
+    let monthTotals: [MonthTotal]
+    /// Average over the months with any activity.
+    let averageCents: Int
+    let activeMonthCount: Int
+    /// This month's transactions in the category, newest first.
+    let monthTransactions: [TransactionRecord]
+    let isCurrentMonth: Bool
+    let elapsedDays: Int
+    let daysInMonth: Int
+
+    init(
+        category: TransactionCategory,
+        transactions: [TransactionRecord],
+        month: MonthInterval,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) {
+        let categoryID = category.id
+        let own = transactions.filter { $0.category?.id == categoryID }
+        let months = MonthInterval.trailing(6, endingAt: month)
+        let kind = category.kind
+
+        let totals: [MonthTotal]
+        switch kind {
+        case .expense:
+            totals = SpendingAnalytics.monthlyCategorySpending(
+                own, months: months, categoryID: category.ledgerID, calendar: calendar)
+        case .income:
+            totals = SpendingAnalytics.monthlyTotals(own, months: months, flow: .income, calendar: calendar)
+        case .transfer:
+            // Transfers never count as spending; show how much moved out.
+            totals = months.map { (item: MonthInterval) -> MonthTotal in
+                let inMonth = SpendingAnalytics.entries(own, in: item.dateInterval(in: calendar))
+                let moved = inMonth
+                    .filter { !$0.isExcluded && $0.amountCents > 0 }
+                    .reduce(0) { $0 + $1.amountCents }
+                return MonthTotal(month: item, cents: moved)
+            }
+        }
+
+        let active = totals.map { $0.cents }.filter { $0 != 0 }
+        let activeSum = active.reduce(0, +)
+
+        self.month = month
+        self.kind = kind
+        self.budgetCents = kind == .expense && category.hasBudget ? category.monthlyBudgetCents : nil
+        self.amountCents = totals.last?.cents ?? 0
+        self.monthTotals = totals
+        self.activeMonthCount = active.count
+        self.averageCents = active.isEmpty ? 0 : Int((Double(activeSum) / Double(active.count)).rounded())
+        self.monthTransactions = SpendingAnalytics.entries(own, in: month.dateInterval(in: calendar))
+        self.isCurrentMonth = month == MonthInterval.current(calendar: calendar, now: now)
+        self.elapsedDays = month.elapsedDays(asOf: now, calendar: calendar)
+        self.daysInMonth = month.numberOfDays(in: calendar)
+    }
+
+    var progress: BudgetProgress? {
+        guard let budgetCents else { return nil }
+        return BudgetProgress(budgetCents: budgetCents, spentCents: amountCents)
+    }
+
+    /// How much of the month has passed, only for the current month.
+    var monthFraction: Double? {
+        guard isCurrentMonth, daysInMonth > 0 else { return nil }
+        return Double(elapsedDays) / Double(daysInMonth)
+    }
+}
+
+/// How a budget's pace reads: words, a symbol and a color.
+private struct CategoryPaceStyle {
+    let title: String
+    let systemImage: String
+    let color: Color
+}
+
+// MARK: - Stat
+
+private struct CategoryDetailStat: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Chart
+
+/// Six monthly bars in the category color; the displayed month is solid and
+/// labeled with its amount, earlier months are faded. The budget is a
+/// dashed rule.
+private struct CategoryHistoryChart: View {
+    let totals: [MonthTotal]
+    let selectedMonth: MonthInterval
+    let budgetCents: Int?
+    let tint: Color
+    /// "spent", "received" or "moved", for VoiceOver.
+    let valueNoun: String
+
+    var body: some View {
+        Chart {
+            ForEach(totals) { total in
+                BarMark(
+                    x: .value("Month", total.month.shortTitle()),
+                    y: .value("Amount", dollars(total.cents))
+                )
+                .foregroundStyle(total.month == selectedMonth ? tint : tint.opacity(0.35))
+                .cornerRadius(6)
+                .annotation(position: .top) {
+                    // Only the displayed month is labeled with its amount.
+                    Text(total.month == selectedMonth ? Money.compact(total.cents) : "")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            budgetMark
+        }
+        .chartYScale(domain: yDomain)
+        .chartYAxis {
+            AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
+                AxisValueLabel {
+                    Text(yLabel(value))
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Last 6 months")
+        .accessibilityValue(accessibilitySummary)
+    }
+
+    @ChartContentBuilder
+    private var budgetMark: some ChartContent {
+        if let budgetCents {
+            RuleMark(y: .value("Budget", dollars(budgetCents)))
+                .foregroundStyle(Color.secondary)
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .annotation(position: .top, alignment: .leading) {
+                    Text("Budget")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+        }
+    }
+
+    private func dollars(_ cents: Int) -> Double {
+        Double(cents) / 100
+    }
+
+    private func yLabel(_ value: AxisValue) -> String {
+        guard let amount = value.as(Double.self) else { return "" }
+        return Money.compact(Int((amount * 100).rounded()))
+    }
+
+    private var yDomain: ClosedRange<Double> {
+        var values = totals.map { $0.cents }
+        if let budgetCents { values.append(budgetCents) }
+        let highest = dollars(values.max() ?? 0)
+        let lowest = dollars(min(0, values.min() ?? 0))
+        // Headroom for the amount and "Budget" labels.
+        let top = max(highest * 1.2, 10)
+        return lowest...top
+    }
+
+    private var accessibilitySummary: String {
+        var parts = totals.map { total in
+            "\(total.month.title()), \(Money.format(total.cents)) \(valueNoun)"
+        }
+        if let budgetCents {
+            parts.append("Monthly budget, \(Money.format(budgetCents))")
+        }
+        return parts.joined(separator: ". ")
+    }
+}
+
+#Preview("Spending") {
+    NavigationStack {
+        CategoryDetailView(category: PreviewData.sampleCategory, month: .current())
+    }
+    .previewEnvironment()
+}
+
+#Preview("Income") {
+    NavigationStack {
+        if let income = LedgerStore.allCategories(in: PreviewData.context).first(where: { $0.kind == .income }) {
+            CategoryDetailView(category: income, month: .current())
+        }
+    }
+    .previewEnvironment()
 }
