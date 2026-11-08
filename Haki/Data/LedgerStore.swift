@@ -46,6 +46,11 @@ enum LedgerStore {
     static func loadSampleData(into context: ModelContext, now: Date = .now, calendar: Calendar = .current) {
         ensureDefaultCategories(in: context)
         let ledger = SampleLedger.generate(now: now, calendar: calendar)
+
+        // Loading twice would duplicate everything; skip if the demo accounts are already here.
+        let sampleInstitutions = Set(ledger.accounts.map(\.institution))
+        let existingInstitutions = Set(((try? context.fetch(FetchDescriptor<Account>())) ?? []).map(\.institution))
+        guard sampleInstitutions.isDisjoint(with: existingInstitutions) else { return }
         let categories = allCategories(in: context)
         var categoryBySeed: [String: TransactionCategory] = [:]
         for category in categories {
