@@ -5,12 +5,19 @@
 //  The budgets closest to (or past) their limit. Without budgets, the top
 //  spending categories and a nudge to set some.
 //
+//  Rows don't push the category screen themselves: editing a budget there
+//  re-sorts these rows (or swaps top spending for budgets), and a row's
+//  `NavigationLink` going away pops the screen it opened. `OverviewView`
+//  pushes it instead (see `onOpenCategory`).
+//
 
 import Foundation
 import SwiftUI
 
 struct OverviewBudgetsCard: View {
     let snapshot: OverviewSnapshot
+    /// Opens a category's detail screen for `snapshot.month`.
+    let onOpenCategory: (TransactionCategory) -> Void
 
     @Environment(AppRouter.self) private var router
 
@@ -40,8 +47,8 @@ struct OverviewBudgetsCard: View {
         let lines = Array(snapshot.budgetLines.prefix(4))
         return VStack(spacing: 16) {
             ForEach(lines) { line in
-                NavigationLink {
-                    CategoryDetailView(category: line.category, month: snapshot.month)
+                Button {
+                    onOpenCategory(line.category)
                 } label: {
                     OverviewBudgetRow(line: line, monthFraction: snapshot.monthFraction)
                 }
@@ -69,8 +76,8 @@ struct OverviewBudgetsCard: View {
     @ViewBuilder
     private func topSpendingLink(for item: OverviewCategorySpend, maxCents: Int) -> some View {
         if let category = item.category {
-            NavigationLink {
-                CategoryDetailView(category: category, month: snapshot.month)
+            Button {
+                onOpenCategory(category)
             } label: {
                 OverviewCategorySpendRow(item: item, maxCents: maxCents)
             }
@@ -203,7 +210,7 @@ private struct OverviewCategorySpendRow: View {
 #Preview {
     NavigationStack {
         ScrollView {
-            OverviewBudgetsCard(snapshot: OverviewPreviewData.snapshot)
+            OverviewBudgetsCard(snapshot: OverviewPreviewData.snapshot, onOpenCategory: { _ in })
                 .padding()
         }
         .background(Color.hakiBackground)

@@ -46,11 +46,18 @@ struct RecurringView: View {
     /// "Today" for every section. Refreshed when the app comes back to the foreground.
     @State private var now = Date.now
     @State private var addedSuggestions = 0
+    /// Repeating charges found in the whole history. Scanning every
+    /// transaction is expensive, so it runs when the screen appears, when
+    /// transactions are added or removed, and when the app returns to the
+    /// foreground, rather than on every render (opening a bill, pausing one,
+    /// dismissing a suggestion).
+    @State private var detectedCandidates: [RecurringCandidate] = []
 
     var body: some View {
         let model = RecurringScreenModel(
             items: items,
             transactions: transactions,
+            candidates: detectedCandidates,
             dismissedKeys: Set(dismissedKeys),
             now: now
         )
@@ -71,10 +78,13 @@ struct RecurringView: View {
             }
             .sensoryFeedback(.success, trigger: addedSuggestions)
             .onAppear {
-                now = .now
+                refresh()
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { now = .now }
+                if phase == .active { refresh() }
+            }
+            .onChange(of: transactions.count) {
+                detectCandidates(asOf: now)
             }
     }
 
@@ -210,6 +220,17 @@ struct RecurringView: View {
     }
 
     // MARK: Actions
+
+    /// Moves "today" forward and rescans the history for suggestions.
+    private func refresh() {
+        let today = Date.now
+        now = today
+        detectCandidates(asOf: today)
+    }
+
+    private func detectCandidates(asOf date: Date) {
+        detectedCandidates = RecurringDetector.candidates(from: transactions, now: date)
+    }
 
     private func add(_ candidate: RecurringCandidate) {
         withAnimation(.snappy) {

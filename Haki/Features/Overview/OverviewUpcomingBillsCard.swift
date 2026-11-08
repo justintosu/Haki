@@ -2,7 +2,8 @@
 //  OverviewUpcomingBillsCard.swift
 //  Haki
 //
-//  Active recurring bills due in the next two weeks, soonest first.
+//  Active recurring bills due in the next two weeks, soonest first, after
+//  any from the last week that are still unpaid.
 //
 
 import Foundation
@@ -46,7 +47,8 @@ struct OverviewUpcomingBillsCard: View {
     }
 }
 
-/// Icon, name, when it's due and the amount; "Paid" once a matching charge shows up.
+/// Icon, name, when it's due (or how late it is) and the amount; "Paid" once
+/// a matching charge shows up.
 private struct OverviewBillRow: View {
     let bill: OverviewUpcomingBill
 
@@ -59,7 +61,7 @@ private struct OverviewBillRow: View {
                     .lineLimit(1)
                 Text(dueText)
                     .font(.subheadline)
-                    .foregroundStyle(isDueTodayAndUnpaid ? Color.hakiWarning : Color.secondary)
+                    .foregroundStyle(dueColor)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
@@ -80,7 +82,16 @@ private struct OverviewBillRow: View {
         bill.daysUntil == 0 && !bill.isPaid
     }
 
+    private var dueColor: Color {
+        if bill.isLate { return Color.hakiNegative }
+        return isDueTodayAndUnpaid ? Color.hakiWarning : Color.secondary
+    }
+
     private var dueText: String {
+        if bill.isLate {
+            let overdue = max(1, -bill.daysUntil)
+            return overdue == 1 ? "Late · 1 day overdue" : "Late · \(overdue) days overdue"
+        }
         switch bill.daysUntil {
         case 0:
             return "Today"

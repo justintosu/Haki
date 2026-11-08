@@ -45,7 +45,8 @@ struct TickerFeedView: View {
             }
         }
         .refreshable {
-            await Task { await reload() }.value
+            // Its own task, so the refresh isn't cancelled when the list redraws.
+            await Task { await refreshAll() }.value
         }
         .task {
             await loadPostsIfNeeded()
@@ -68,7 +69,9 @@ struct TickerFeedView: View {
 
     @ViewBuilder private var postsContent: some View {
         let symbol = self.symbol
+        // Also drops posts whose caption was edited to no longer mention it.
         let posts = pager.visiblePosts { PostCaptionFormatter.post($0, mentions: symbol) }
+            .filter { PostCaptionFormatter.post($0, mentions: symbol) }
         if posts.isEmpty {
             switch pager.phase {
             case .idle, .loading:
@@ -119,6 +122,15 @@ struct TickerFeedView: View {
         await portfolio.refresh()
     }
 
+    /// The posts, and your portfolio too if it hasn't loaded yet (say, after a failure).
+    private func refreshAll() async {
+        async let posts: Void = reload()
+        if portfolio.lastLoaded == nil, !portfolio.isLoading {
+            await portfolio.refresh()
+        }
+        await posts
+    }
+
     private func reload() async {
         let symbol = self.symbol
         await pager.reload { before, limit in
@@ -146,7 +158,8 @@ struct TickerFeedView: View {
 
 // MARK: - Position card
 
-/// Your position in a ticker (value, return, gain, weight) or a note that you don't hold it.
+/// Your position in a ticker (value, return, gain, weight) or a note that you
+/// don't hold it, once your portfolio has loaded.
 struct TickerPositionCard: View {
     let symbol: String
 
@@ -155,6 +168,13 @@ struct TickerPositionCard: View {
     var body: some View {
         if let position = portfolio.position(for: symbol) {
             held(position)
+        } else if portfolio.lastLoaded == nil {
+            // Not loaded yet: don't claim you don't hold it.
+            if let message = portfolio.errorMessage, !portfolio.isLoading {
+                loadFailed(message)
+            } else {
+                checking
+            }
         } else {
             notHeld
         }
@@ -232,10 +252,47 @@ struct TickerPositionCard: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var notHeldDetail: String {
-        if portfolio.lastLoaded == nil && portfolio.isLoading {
-            return "Checking your portfolio…"
+    private var checking: some View {
+        HStack(spacing: 14) {
+            ProgressView()
+                .frame(width: 44, height: 44)
+            Text("Checking your portfolio…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .hakiCard()
+        .accessibilityElement(children: .combine)
+    }
+
+    private func loadFailed(_ message: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.hakiWarning)
+                .frame(width: 44, height: 44)
+                .background(Color.hakiWarning.opacity(0.12), in: Circle())
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Couldn't check your portfolio")
+                    .font(.headline)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            Button("Retry") {
+                Task { await portfolio.refresh() }
+            }
+            .font(.subheadline.weight(.semibold))
+            .buttonStyle(.borderless)
+        }
+        .hakiCard()
+        .accessibilityElement(children: .contain)
+    }
+
+    private var notHeldDetail: String {
         if !portfolio.hasConnections {
             return "Connect a brokerage in Invest to see your position here."
         }

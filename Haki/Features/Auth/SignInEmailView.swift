@@ -372,7 +372,7 @@ struct SignInEmailView: View {
             try await auth.sendPasswordReset(email: address)
             notice = SignInEmailNotice(
                 title: "Check your email",
-                message: "If there's a Haki account for \(address), we've sent it a link to get back in. Open the link on this iPhone."
+                message: "If there's a Haki account for \(address), we've sent it a link to choose a new password. Open the link on this iPhone, then set your new password."
             )
         } catch {
             errorText = AuthErrorFormatter.message(for: error)

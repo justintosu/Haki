@@ -36,6 +36,8 @@ struct PostCardView: View {
     @State private var confirmingDelete = false
     @State private var isDeleting = false
     @State private var isEditingCaption = false
+    @State private var reportTarget: SocialReportTarget?
+    @State private var blockTarget: SocialBlockTarget?
     @State private var errorMessage: String?
 
     init(post: FeedPost, onChange: @escaping (FeedPost?) -> Void, commentAction: (() -> Void)? = nil) {
@@ -83,6 +85,7 @@ struct PostCardView: View {
                 apply(latest)
             }
         }
+        .socialModeration(report: $reportTarget, block: $blockTarget)
         .socialErrorAlert($errorMessage)
         .onChange(of: post) { _, _ in
             localPost = nil
@@ -132,6 +135,10 @@ struct PostCardView: View {
         return parts.joined(separator: ", ")
     }
 
+    private var authorBlockTarget: SocialBlockTarget {
+        SocialBlockTarget(userID: shown.authorID, username: shown.authorUsername)
+    }
+
     private var moreMenu: some View {
         Menu {
             Button {
@@ -151,6 +158,19 @@ struct PostCardView: View {
                     confirmingDelete = true
                 } label: {
                     Label("Delete post", systemImage: "trash")
+                }
+            } else {
+                Section {
+                    Button {
+                        reportTarget = .post(shown)
+                    } label: {
+                        Label("Report post", systemImage: "flag")
+                    }
+                    Button(role: .destructive) {
+                        blockTarget = authorBlockTarget
+                    } label: {
+                        Label("Block \(authorBlockTarget.handle)", systemImage: "hand.raised")
+                    }
                 }
             }
         } label: {

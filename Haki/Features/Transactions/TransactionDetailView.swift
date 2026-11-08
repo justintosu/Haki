@@ -24,7 +24,14 @@ struct TransactionDetailView: View {
     private var allTransactions: [TransactionRecord]
 
     @State private var merchantDraft: String
+    /// The merchant `merchantDraft` was last filled from. Only a name the
+    /// user changed here is saved, so an out-of-date draft (the same
+    /// transaction edited on another screen) never undoes newer edits.
+    @State private var merchantSeed: String
     @State private var amountText: String
+    /// The signed amount `amountText` and `isMoneyIn` were last filled from
+    /// (see `merchantSeed`).
+    @State private var amountSeed: Int
     @State private var isMoneyIn: Bool
     @State private var dateSelection: Date
     @State private var categorySelection: TransactionCategory?
@@ -52,17 +59,34 @@ struct TransactionDetailView: View {
 
     init(transaction: TransactionRecord) {
         self.transaction = transaction
-        _merchantDraft = State(initialValue: transaction.merchant)
-        _amountText = State(initialValue: Money.editableText(fromCents: abs(transaction.amountCents)))
-        _isMoneyIn = State(initialValue: transaction.amountCents < 0)
-        _dateSelection = State(initialValue: transaction.date)
-        _categorySelection = State(initialValue: transaction.category)
+        // A deleted record's values may no longer be readable.
+        let isLive = !transaction.isDeleted && transaction.modelContext != nil
+        let merchant = isLive ? transaction.merchant : ""
+        let cents = isLive ? transaction.amountCents : 0
+        _merchantDraft = State(initialValue: merchant)
+        _merchantSeed = State(initialValue: merchant)
+        _amountText = State(initialValue: Money.editableText(fromCents: abs(cents)))
+        _amountSeed = State(initialValue: cents)
+        _isMoneyIn = State(initialValue: cents < 0)
+        _dateSelection = State(initialValue: isLive ? transaction.date : Date.now)
+        _categorySelection = State(initialValue: isLive ? transaction.category : nil)
     }
 
     var body: some View {
         Group {
             if isDeleted {
+                // Deleted here: the screen is closing.
                 Color.hakiBackground
+            } else if isGone {
+                // Deleted elsewhere (e.g. "Erase all data", or its account was
+                // deleted) while this screen was open.
+                ContentUnavailableView(
+                    "Transaction Deleted",
+                    systemImage: "trash",
+                    description: Text("This transaction is no longer in Haki.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.hakiBackground)
             } else {
                 form
             }
@@ -71,9 +95,15 @@ struct TransactionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    /// The transaction was deleted, here or elsewhere. Checked before reading
+    /// or writing any of its values.
+    private var isGone: Bool {
+        isDeleted || transaction.isDeleted || transaction.modelContext == nil
+    }
+
     // MARK: Form
 
-    // The modifiers are split over three properties so no single expression
+    // The modifiers are split over four properties so no single expression
     // gets long enough to strain the type checker.
 
     private var form: some View {
@@ -83,7 +113,7 @@ struct TransactionDetailView: View {
 
     /// The form with its keyboard toolbar and the handlers that save edits.
     private var editableForm: some View {
-        formContent
+        syncedForm
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -120,6 +150,21 @@ struct TransactionDetailView: View {
             }
             .onDisappear {
                 commitPendingEdits()
+            }
+    }
+
+    /// The form, refilled from the transaction when it shows again or the
+    /// transaction changes, since another screen may have edited it.
+    private var syncedForm: some View {
+        formContent
+            .onAppear {
+                syncDrafts()
+            }
+            .onChange(of: transaction.merchant) { _, _ in
+                syncDrafts()
+            }
+            .onChange(of: transaction.amountCents) { _, _ in
+                syncDrafts()
             }
     }
 
@@ -400,7 +445,7 @@ struct TransactionDetailView: View {
     }
 
     private func categorySelectionChanged(to newValue: TransactionCategory?) {
-        guard !isDeleted, newValue?.id != transaction.category?.id else { return }
+        guard !isGone, newValue?.id != transaction.category?.id else { return }
         let newID = newValue?.id
         let others = LedgerStore.otherTransactions(sameMerchantAs: transaction, in: modelContext)
         let affected = others.filter { $0.category?.id != newID }.count
@@ -421,7 +466,7 @@ struct TransactionDetailView: View {
     private func presentCategoryPromptIfNeeded() async {
         guard categoryProposal != nil else { return }
         try? await Task.sleep(for: .milliseconds(450))
-        guard !Task.isCancelled, categoryProposal != nil, !isDeleted else { return }
+        guard !Task.isCancelled, categoryProposal != nil, !isGone else { return }
         showsCategoryPrompt = true
     }
 
@@ -444,7 +489,7 @@ struct TransactionDetailView: View {
     /// picker selection goes back to the transaction's category.
     private func finishCategoryPrompt() {
         categoryProposal = nil
-        guard !isDeleted else { return }
+        guard !isGone else { return }
         categorySelection = transaction.category
     }
 
@@ -457,45 +502,76 @@ struct TransactionDetailView: View {
         case .amount:
             commitAmount()
         case .notes:
-            if !isDeleted { LedgerStore.save(modelContext) }
+            if !isGone { LedgerStore.save(modelContext) }
         case nil:
             break
         }
     }
 
-    private func commitMerchant() {
-        guard !isDeleted else { return }
-        let trimmed = merchantDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+    /// Refills the fields from the transaction, which another screen may have
+    /// edited (the same transaction can be open from Home and Transactions,
+    /// or twice through "More from"). A field being typed in is left alone.
+    private func syncDrafts() {
+        guard !isGone else { return }
+        if focusedField != .merchant {
+            merchantSeed = transaction.merchant
             merchantDraft = transaction.merchant
-            return
         }
-        if trimmed != transaction.merchant {
+        if focusedField != .amount {
+            let cents = transaction.amountCents
+            amountSeed = cents
+            amountText = Money.editableText(fromCents: abs(cents))
+            // After the seed and text, so the commit this triggers writes nothing.
+            if cents != 0 { isMoneyIn = cents < 0 }
+        }
+        if !Calendar.current.isDate(dateSelection, inSameDayAs: transaction.date) {
+            dateSelection = transaction.date
+        }
+        if categoryProposal == nil, categorySelection?.id != transaction.category?.id {
+            categorySelection = transaction.category
+        }
+    }
+
+    private func commitMerchant() {
+        guard !isGone else { return }
+        let trimmed = merchantDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Only a name typed here is saved: an untouched draft may be out of date.
+        if !trimmed.isEmpty, merchantDraft != merchantSeed, trimmed != transaction.merchant {
             transaction.setMerchant(trimmed)
             LedgerStore.save(modelContext)
         }
+        merchantSeed = transaction.merchant
         merchantDraft = transaction.merchant
     }
 
     private func commitAmount() {
-        guard !isDeleted else { return }
-        guard let parsed = TransactionInput.parseCents(amountText) else {
-            amountText = Money.editableText(fromCents: abs(transaction.amountCents))
-            return
+        guard !isGone else { return }
+        let current = transaction.amountCents
+        // Only what was changed here is saved: an untouched amount or
+        // direction may be out of date.
+        var magnitude = abs(current)
+        if amountText != Money.editableText(fromCents: abs(amountSeed)),
+           let parsed = TransactionInput.parseCents(amountText) {
+            magnitude = abs(parsed)
         }
-        let magnitude = abs(parsed)
-        let signed = isMoneyIn ? -magnitude : magnitude
-        if signed != transaction.amountCents {
+        let moneyIn = (isMoneyIn != (amountSeed < 0)) ? isMoneyIn : (current < 0)
+        let signed = moneyIn ? -magnitude : magnitude
+        if signed != current {
             withAnimation {
                 transaction.amountCents = signed
             }
             LedgerStore.save(modelContext)
         }
-        amountText = Money.editableText(fromCents: magnitude)
+        let saved = transaction.amountCents
+        amountSeed = saved
+        amountText = Money.editableText(fromCents: abs(saved))
+        if saved != 0, isMoneyIn != (saved < 0) {
+            isMoneyIn = saved < 0
+        }
     }
 
     private func commitDate(_ date: Date) {
-        guard !isDeleted else { return }
+        guard !isGone else { return }
         let noon = Calendar.current.noon(on: date)
         guard noon != transaction.date else { return }
         transaction.date = noon
@@ -503,7 +579,7 @@ struct TransactionDetailView: View {
     }
 
     private func commitPendingEdits() {
-        guard !isDeleted else { return }
+        guard !isGone else { return }
         commitMerchant()
         commitAmount()
         LedgerStore.save(modelContext)

@@ -26,6 +26,9 @@ struct AccountEditorView: View {
     @State private var institution: String
     @State private var kind: AccountKind
     @State private var balanceText: String
+    /// The decimal pad has no minus key, so the sign is a toggle: an
+    /// overdrawn asset, or a liability with a credit balance.
+    @State private var isNegativeBalance: Bool
     @State private var mask: String
     @State private var includeInNetWorth: Bool
     @State private var showsDeleteConfirmation = false
@@ -45,7 +48,8 @@ struct AccountEditorView: View {
         _name = State(initialValue: account?.name ?? "")
         _institution = State(initialValue: account?.institution ?? "")
         _kind = State(initialValue: account?.kind ?? .checking)
-        _balanceText = State(initialValue: account.map { Money.editableText(fromCents: $0.balanceCents) } ?? "")
+        _balanceText = State(initialValue: account.map { Money.editableText(fromCents: abs($0.balanceCents)) } ?? "")
+        _isNegativeBalance = State(initialValue: (account?.balanceCents ?? 0) < 0)
         _mask = State(initialValue: account?.mask ?? "")
         _includeInNetWorth = State(initialValue: account?.includeInNetWorth ?? true)
     }
@@ -181,6 +185,7 @@ struct AccountEditorView: View {
                     .focused($focusedField, equals: .balance)
                     .accessibilityLabel(kind.isLiability ? "Amount owed" : "Current balance")
             }
+            AccountNegativeBalanceToggle(isLiability: kind.isLiability, isOn: $isNegativeBalance)
         } header: {
             Text("Current balance")
         } footer: {
@@ -215,8 +220,9 @@ struct AccountEditorView: View {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The typed balance with the sign toggle applied.
     private var parsedBalance: Int? {
-        AccountsStyle.parseCents(balanceText)
+        AccountsStyle.parseCents(balanceText).map { AccountsStyle.applyingSign($0, isNegative: isNegativeBalance) }
     }
 
     /// Text that isn't a number. An empty field means a zero balance.

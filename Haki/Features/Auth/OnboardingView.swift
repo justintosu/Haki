@@ -53,9 +53,17 @@ struct OnboardingView: View {
         }
         .onAppear {
             prefillIfNeeded()
+            fillDisplayNameIfEmpty(auth.pendingAppleDisplayName)
         }
         .onChange(of: auth.profile?.id) {
             prefillIfNeeded()
+        }
+        // The name Sign in with Apple shared can arrive after this screen appears.
+        .onChange(of: auth.profile?.displayName) { _, newValue in
+            fillDisplayNameIfEmpty(newValue)
+        }
+        .onChange(of: auth.pendingAppleDisplayName) { _, newValue in
+            fillDisplayNameIfEmpty(newValue)
         }
         .task {
             if auth.profile == nil {
@@ -199,7 +207,12 @@ struct OnboardingView: View {
             Label(problem, systemImage: "exclamationmark.circle")
                 .foregroundStyle(Color.hakiWarning)
         } else {
-            Label("Friends can find you as @\(username).", systemImage: "checkmark.circle")
+            VStack(alignment: .leading, spacing: 4) {
+                Label("People on Haki can find you as @\(username).", systemImage: "checkmark.circle")
+                if usernameComesFromEmail {
+                    Text("We suggested this from your email address. Usernames are public — pick something else if you'd rather not show it.")
+                }
+            }
         }
     }
 
@@ -224,7 +237,7 @@ struct OnboardingView: View {
         } header: {
             Text("Privacy")
         } footer: {
-            Text("People who view your profile see the stocks and funds you hold and each one's share of your portfolio. Dollar amounts, balances and account details are never shown. You can change this any time in Settings.")
+            Text("People who view your profile see the stocks and funds you hold, each one's share of your portfolio and its return in percent, and your total return. Your posts about a stock you hold show a “holds” badge. Dollar amounts, balances and account details are never shown. You can change this any time in Settings.")
         }
     }
 
@@ -282,6 +295,15 @@ struct OnboardingView: View {
             && !isSaving && !isLoadingPhoto && !isSigningOut
     }
 
+    /// Whether the username is still the one the sign-up trigger made from the
+    /// email address (its local part, perhaps with a number added).
+    private var usernameComesFromEmail: Bool {
+        guard let email = auth.email, let localPart = email.split(separator: "@").first else { return false }
+        let base = String(UsernameRules.normalize(String(localPart)).prefix(18))
+        guard base.count >= UsernameRules.lengthRange.lowerBound, username.hasPrefix(base) else { return false }
+        return username.dropFirst(base.count).allSatisfy(\.isNumber)
+    }
+
     private var alertMessage: Binding<String?> {
         Binding(
             get: { errorMessage ?? auth.errorMessage },
@@ -303,10 +325,18 @@ struct OnboardingView: View {
         if username.isEmpty {
             username = UsernameRules.normalize(profile.username)
         }
-        if displayName.isEmpty {
-            displayName = AuthText.limited(profile.displayName, to: Self.displayNameLimit)
-        }
+        fillDisplayNameIfEmpty(profile.displayName)
+        fillDisplayNameIfEmpty(auth.pendingAppleDisplayName)
         sharePortfolio = profile.sharePortfolio
+    }
+
+    /// Puts `name` in the name field while it's still empty (nothing typed yet),
+    /// e.g. the name Sign in with Apple shared, which can arrive late.
+    private func fillDisplayNameIfEmpty(_ name: String?) {
+        guard displayName.isEmpty, let name else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        displayName = AuthText.limited(trimmed, to: Self.displayNameLimit)
     }
 
     private func loadPhoto(_ item: PhotosPickerItem?) async {
@@ -322,10 +352,14 @@ struct OnboardingView: View {
             let data = try await item.loadTransferable(type: Data.self)
             // A newer pick (or "Remove") replaced this one while it loaded.
             guard photoItem == item else { return }
-            guard let data,
-                  let jpeg = ImageUpload.jpegData(from: data, maxDimension: 512, quality: 0.85),
-                  let image = UIImage(data: jpeg)
-            else {
+            let jpeg: Data?
+            if let data {
+                jpeg = await ImageUpload.makeJPEG(from: data, maxDimension: 512, quality: 0.85)
+            } else {
+                jpeg = nil
+            }
+            guard photoItem == item else { return }
+            guard let jpeg, let image = UIImage(data: jpeg) else {
                 photoItem = nil
                 errorMessage = "Haki couldn't use that photo. Try a different one."
                 return

@@ -3,8 +3,8 @@
 //  Haki
 //
 //  Small pieces shared by the Accounts screens: the account-kind icon, the
-//  interactive balance / net worth chart, the change label and the range
-//  picker.
+//  negative-balance toggle, the interactive balance / net worth chart, the
+//  change label and the range picker.
 //
 
 import Charts
@@ -93,9 +93,36 @@ enum AccountsStyle {
         Money.parseCents(text, decimalSeparator: Character(Locale.current.decimalSeparator ?? "."))
     }
 
+    /// Applies a negative-balance toggle to a typed amount. A minus typed or
+    /// pasted into the field still counts when the toggle is off.
+    static func applyingSign(_ cents: Int, isNegative: Bool) -> Int {
+        isNegative ? -abs(cents) : cents
+    }
+
     /// "••4821", or an empty string.
     static func maskText(_ mask: String) -> String {
         mask.isEmpty ? "" : "••" + mask
+    }
+}
+
+// MARK: - Negative balance toggle
+
+/// The sign of a typed balance, since the decimal pad has no minus key: an
+/// asset below zero (an overdrawn checking account) or a liability with a
+/// credit balance (the card owes you after a refund).
+struct AccountNegativeBalanceToggle: View {
+    let isLiability: Bool
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isLiability ? "Credit balance" : "Negative balance")
+                Text(isLiability ? "You're owed money, like after a refund." : "Below zero, like an overdrawn account.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

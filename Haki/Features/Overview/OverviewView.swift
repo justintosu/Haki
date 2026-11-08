@@ -33,6 +33,10 @@ struct OverviewView: View {
     private var recurringItems: [RecurringItem]
 
     @State private var activeSheet: OverviewSheet?
+    /// A transaction or category opened from a card. Pushed from here, not
+    /// from the card's rows, so an edit that removes the row (reviewing a
+    /// transaction, setting a budget) doesn't pop the screen.
+    @State private var openedScreen: OverviewOpenedScreen?
     /// "Today" for every card. Refreshed when the app comes back to the foreground.
     @State private var now = Date.now
     @State private var sampleDataLoads = 0
@@ -40,9 +44,12 @@ struct OverviewView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Overview")
+                .navigationTitle("Home")
                 .navigationDestination(item: homeDestination) { destination in
                     homeScreen(for: destination)
+                }
+                .navigationDestination(item: $openedScreen) { screen in
+                    openedScreenContent(for: screen)
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -109,8 +116,12 @@ struct OverviewView: View {
                     noTransactionsCard
                 } else {
                     OverviewSpendingCard(snapshot: snapshot)
-                    OverviewReviewCard(transactions: unreviewed)
-                    OverviewBudgetsCard(snapshot: snapshot)
+                    OverviewReviewCard(transactions: unreviewed, onOpen: { transaction in
+                        openedScreen = .transaction(transaction)
+                    })
+                    OverviewBudgetsCard(snapshot: snapshot, onOpenCategory: { category in
+                        openedScreen = .category(category, month: snapshot.month)
+                    })
                 }
                 if snapshot.hasRecurringItems {
                     OverviewUpcomingBillsCard(bills: snapshot.upcomingBills)
@@ -191,6 +202,16 @@ struct OverviewView: View {
         }
     }
 
+    @ViewBuilder
+    private func openedScreenContent(for screen: OverviewOpenedScreen) -> some View {
+        switch screen {
+        case .transaction(let transaction):
+            TransactionDetailView(transaction: transaction)
+        case .category(let category, let month):
+            CategoryDetailView(category: category, month: month)
+        }
+    }
+
     // MARK: Actions
 
     private func loadSampleData() {
@@ -200,6 +221,12 @@ struct OverviewView: View {
         now = .now
         sampleDataLoads += 1
     }
+}
+
+/// A screen opened from one of the dashboard's cards.
+private enum OverviewOpenedScreen: Hashable {
+    case transaction(TransactionRecord)
+    case category(TransactionCategory, month: MonthInterval)
 }
 
 private enum OverviewSheet: String, Identifiable {

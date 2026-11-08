@@ -14,6 +14,7 @@ struct AccountSettingsSection: View {
     @Environment(AuthService.self) private var auth
 
     @State private var showingEditProfile = false
+    @State private var showingChangePassword = false
     @State private var confirmingSignOut = false
     @State private var confirmingDelete = false
     @State private var isSigningOut = false
@@ -57,6 +58,18 @@ struct AccountSettingsSection: View {
             .disabled(auth.profile == nil || isBusy)
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()
+            }
+
+            if auth.signsInWithPassword {
+                Button {
+                    showingChangePassword = true
+                } label: {
+                    Label("Change password", systemImage: "key")
+                }
+                .disabled(isBusy)
+                .sheet(isPresented: $showingChangePassword) {
+                    AuthSetNewPasswordView()
+                }
             }
 
             Button(role: .destructive) {
@@ -148,7 +161,7 @@ struct AccountSettingsSection: View {
         } header: {
             Text("Privacy")
         } footer: {
-            Text("When this is on, people who view your profile see the stocks and funds you hold, each one's share of your portfolio, and your overall gain or loss in percent. Dollar amounts, balances and account details are never shared.")
+            Text("When this is on, people who view your profile see the stocks and funds you hold, each one's share of your portfolio and its return in percent, and your overall gain or loss in percent. Your posts about a stock you hold show a “holds” badge. Dollar amounts, balances and account details are never shared.")
         }
     }
 

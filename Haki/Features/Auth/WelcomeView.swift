@@ -105,8 +105,8 @@ struct WelcomeView: View {
             )
             WelcomeHighlightRow(
                 systemImage: "lock.shield.fill",
-                title: "Private by default",
-                detail: "Friends see percentages, never dollar amounts. Your budgets stay on this iPhone."
+                title: "Amounts stay private",
+                detail: "Your profile shows percentages, never dollar amounts, and you can turn sharing off. Your budgets stay on this iPhone."
             )
         }
         .hakiCard(padding: 20)
@@ -179,7 +179,7 @@ struct WelcomeView: View {
     private var footnote: some View {
         VStack(spacing: 6) {
             Label("Your budgets and transactions stay on this iPhone.", systemImage: "lock.fill")
-            Text("Friends only see what you choose to share — never your balances.")
+            Text("Others on Haki only see what you choose to share — never your balances.")
         }
         .font(.footnote)
         .foregroundStyle(.secondary)

@@ -70,7 +70,8 @@ struct ProfilePostTile: View {
     @ViewBuilder
     private var tileContent: some View {
         if let url = post.imageURL {
-            AsyncImage(url: url) { phase in
+            // Downscaled to tile size (and cached) rather than the full photo.
+            SocialThumbnailImage(url: url, side: 200) { phase in
                 switch phase {
                 case .success(let image):
                     image
@@ -83,7 +84,7 @@ struct ProfilePostTile: View {
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
-                default:
+                case .loading:
                     ZStack {
                         Color.secondary.opacity(0.12)
                         ProgressView()

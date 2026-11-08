@@ -25,6 +25,8 @@ struct PostDetailView: View {
     @State private var isSending = false
     @State private var sentCount = 0
     @State private var scrollTarget: UUID?
+    @State private var reportTarget: SocialReportTarget?
+    @State private var blockTarget: SocialBlockTarget?
     @State private var errorMessage: String?
     @FocusState private var composerFocused: Bool
 
@@ -40,6 +42,8 @@ struct PostDetailView: View {
                     systemImage: "rectangle.slash",
                     description: Text("This post was deleted.")
                 )
+            } else if isAuthorBlocked {
+                blockedAuthorView
             } else {
                 content
             }
@@ -55,7 +59,26 @@ struct PostDetailView: View {
             syncWithChangesMadeElsewhere()
         }
         .sensoryFeedback(.success, trigger: sentCount)
+        .socialModeration(report: $reportTarget, block: $blockTarget)
         .socialErrorAlert($errorMessage)
+    }
+
+    private var isAuthorBlocked: Bool {
+        post.authorID != auth.userID && SocialBlockList.shared.isBlocked(post.authorID)
+    }
+
+    private var blockedAuthorView: some View {
+        let handle = SocialBlockTarget(userID: post.authorID, username: post.authorUsername).handle
+        return ContentUnavailableView {
+            Label("You blocked \(handle)", systemImage: "hand.raised")
+        } description: {
+            Text("Unblock them to see their posts and comments again.")
+        } actions: {
+            Button("Unblock") {
+                Task { await SocialBlockList.shared.unblock(post.authorID, social: social) }
+            }
+            .buttonStyle(.bordered)
+        }
     }
 
     private var content: some View {
@@ -105,7 +128,14 @@ struct PostDetailView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
+    /// The comments, without those by people you blocked.
+    private var visibleComments: [PostComment] {
+        let blockList = SocialBlockList.shared
+        return comments.filter { !blockList.isBlocked($0.authorID) }
+    }
+
     @ViewBuilder private var commentsContent: some View {
+        let visible = visibleComments
         switch commentsPhase {
         case .idle, .loading:
             ProgressView("Loading comments…")
@@ -125,7 +155,7 @@ struct PostDetailView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
         case .loaded:
-            if comments.isEmpty {
+            if visible.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right")
                         .font(.title)
@@ -143,12 +173,15 @@ struct PostDetailView: View {
                 .padding(.vertical, 24)
                 .accessibilityElement(children: .combine)
             } else {
-                ForEach(comments) { comment in
+                ForEach(visible) { comment in
                     PostCommentRow(
                         comment: comment,
                         isByPostAuthor: comment.authorID == post.authorID,
                         canDelete: canDelete(comment),
-                        onDelete: { Task { await delete(comment) } }
+                        canReport: canReport(comment),
+                        onDelete: { Task { await delete(comment) } },
+                        onReport: { reportTarget = .comment(comment) },
+                        onBlock: { blockTarget = SocialBlockTarget(userID: comment.authorID, username: comment.authorUsername) }
                     )
                     .id(comment.id)
                 }
@@ -159,6 +192,12 @@ struct PostDetailView: View {
     private func canDelete(_ comment: PostComment) -> Bool {
         guard let me = auth.userID else { return false }
         return comment.authorID == me || post.authorID == me
+    }
+
+    /// Someone else's comment.
+    private func canReport(_ comment: PostComment) -> Bool {
+        guard let me = auth.userID else { return false }
+        return comment.authorID != me
     }
 
     // MARK: Composer
@@ -255,10 +294,17 @@ struct PostDetailView: View {
     }
 
     private func refreshPost() async {
+        let center = PostChangeCenter.shared
+        let revisionBeforeFetch = center.revision
         do {
             if let fresh = try await social.post(id: post.id) {
+                // A like, comment or edit made while the request was out is newer
+                // than the server's copy (read before it landed): keep it.
+                if let change = center.changes[fresh.id], change.revision > revisionBeforeFetch {
+                    return
+                }
                 post = fresh
-                PostChangeCenter.shared.update(fresh)
+                center.update(fresh)
             } else {
                 isUnavailable = true
                 PostChangeCenter.shared.delete(post.id)
@@ -356,7 +402,11 @@ private struct PostCommentRow: View {
     let comment: PostComment
     let isByPostAuthor: Bool
     let canDelete: Bool
+    /// Someone else's comment: offer Report and Block.
+    let canReport: Bool
     let onDelete: () -> Void
+    let onReport: () -> Void
+    let onBlock: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -406,12 +456,30 @@ private struct PostCommentRow: View {
                     Label("Delete comment", systemImage: "trash")
                 }
             }
+            if canReport {
+                Section {
+                    Button(action: onReport) {
+                        Label("Report comment", systemImage: "flag")
+                    }
+                    Button(role: .destructive, action: onBlock) {
+                        Label("Block \(authorHandle)", systemImage: "hand.raised")
+                    }
+                }
+            }
         }
         .accessibilityActions {
             if canDelete {
                 Button("Delete comment", action: onDelete)
             }
+            if canReport {
+                Button("Report comment", action: onReport)
+                Button("Block \(authorHandle)", action: onBlock)
+            }
         }
+    }
+
+    private var authorHandle: String {
+        SocialBlockTarget(userID: comment.authorID, username: comment.authorUsername).handle
     }
 
     private var accessibilityText: String {

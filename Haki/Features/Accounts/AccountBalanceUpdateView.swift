@@ -19,13 +19,17 @@ struct AccountBalanceUpdateView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var amountText: String
+    /// The decimal pad has no minus key, so the sign is a toggle: an
+    /// overdrawn asset, or a liability with a credit balance.
+    @State private var isNegative: Bool
     @FocusState private var isAmountFocused: Bool
 
     /// - Parameter onSave: called after the new balance is saved (e.g. for a haptic).
     init(account: Account, onSave: @escaping () -> Void = {}) {
         self.account = account
         self.onSave = onSave
-        _amountText = State(initialValue: Money.editableText(fromCents: account.balanceCents))
+        _amountText = State(initialValue: Money.editableText(fromCents: abs(account.balanceCents)))
+        _isNegative = State(initialValue: account.balanceCents < 0)
     }
 
     var body: some View {
@@ -82,6 +86,7 @@ struct AccountBalanceUpdateView: View {
                 .monospacedDigit()
                 .focused($isAmountFocused)
                 .accessibilityLabel(account.isLiability ? "Amount owed" : "New balance")
+            AccountNegativeBalanceToggle(isLiability: account.isLiability, isOn: $isNegative)
         } header: {
             Text(account.isLiability ? "Amount owed today" : "Balance today")
         } footer: {
@@ -92,8 +97,9 @@ struct AccountBalanceUpdateView: View {
 
     // MARK: Logic
 
+    /// The typed amount with the sign toggle applied.
     private var parsedCents: Int? {
-        AccountsStyle.parseCents(amountText)
+        AccountsStyle.parseCents(amountText).map { AccountsStyle.applyingSign($0, isNegative: isNegative) }
     }
 
     private var isInvalid: Bool {

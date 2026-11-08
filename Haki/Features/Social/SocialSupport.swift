@@ -75,15 +75,15 @@ enum PostCaptionFormatter {
         return result
     }
 
-    /// Distinct, valid tickers a post is about: its `ticker` first, then the
-    /// caption's cashtags in order of appearance.
+    /// Distinct, valid tickers a post is about: its tag (`taggedTicker`) first,
+    /// then the caption's cashtags in order of appearance.
     static func tickers(for post: FeedPost) -> [String] {
+        let mentioned = Cashtags.extract(from: post.caption).filter { Cashtags.isValidTicker($0) }
         var result: [String] = []
-        if let ticker = post.ticker?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
-           Cashtags.isValidTicker(ticker) {
+        if let ticker = taggedTicker(of: post, mentioned: mentioned) {
             result.append(ticker)
         }
-        for ticker in Cashtags.extract(from: post.caption) where Cashtags.isValidTicker(ticker) && !result.contains(ticker) {
+        for ticker in mentioned where !result.contains(ticker) {
             result.append(ticker)
         }
         return result
@@ -91,7 +91,22 @@ enum PostCaptionFormatter {
 
     /// Whether the post is about `symbol` (tagged with it or mentions it as a cashtag).
     static func post(_ post: FeedPost, mentions symbol: String) -> Bool {
-        post.ticker?.uppercased() == symbol || Cashtags.extract(from: post.caption).contains(symbol)
+        let mentioned = Cashtags.extract(from: post.caption)
+        return mentioned.contains(symbol) || taggedTicker(of: post, mentioned: mentioned) == symbol
+    }
+
+    /// The post's `ticker` while it still applies. A trade is always about its
+    /// ticker. A regular post's ticker is just its caption's first cashtag when
+    /// it was shared, and only the caption can be edited, so it counts only
+    /// while the caption still mentions it.
+    private static func taggedTicker(of post: FeedPost, mentioned: [String]) -> String? {
+        guard let ticker = post.ticker?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+              Cashtags.isValidTicker(ticker)
+        else { return nil }
+        if post.kind == .post && !mentioned.contains(ticker) {
+            return nil
+        }
+        return ticker
     }
 
     /// "AAPL" from "$aapl ", for ticker screens and prefills.

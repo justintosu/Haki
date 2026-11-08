@@ -26,7 +26,11 @@ struct ProfileView: View {
     @State private var lastLoaded: Date?
     @State private var selectedTab: ProfileContentTab = .posts
 
+    /// The posts as loaded; shown through `shownPosts`.
     @State private var posts: [FeedPost] = []
+    /// `PostChangeCenter.revision` when each post was loaded, so edits and
+    /// deletes made anywhere since then win over the loaded copy.
+    @State private var postLoadRevisions: [UUID: Int] = [:]
     @State private var postsLoaded = false
     @State private var postsError: String?
     @State private var canLoadMore = false
@@ -38,6 +42,8 @@ struct ProfileView: View {
     @State private var isFollowBusy = false
     @State private var showingEditProfile = false
     @State private var showingCompose = false
+    @State private var reportTarget: SocialReportTarget?
+    @State private var blockTarget: SocialBlockTarget?
     @State private var errorMessage: String?
 
     /// A multiple of the grid's 3 columns.
@@ -61,6 +67,13 @@ struct ProfileView: View {
         .background(Color.hakiBackground)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(isTabRoot ? NavigationBarItem.TitleDisplayMode.large : NavigationBarItem.TitleDisplayMode.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if !isSelf, let header = headerModel {
+                    moderationMenu(header)
+                }
+            }
+        }
         .refreshable {
             // Its own task, so the refresh isn't cancelled when the content redraws.
             await Task { await reloadAll() }.value
@@ -76,6 +89,12 @@ struct ProfileView: View {
             guard isSelf, portfolioState.isLoaded else { return }
             Task { await loadPortfolio() }
         }
+        .onChange(of: isBlocked) { _, blocked in
+            // Blocking unfollows them.
+            guard blocked, var current = profile else { return }
+            FollowToggle.set(false, on: &current)
+            profile = current
+        }
         .sheet(isPresented: $showingEditProfile) {
             EditProfileView()
         }
@@ -84,6 +103,7 @@ struct ProfileView: View {
         }) {
             ComposePostView()
         }
+        .socialModeration(report: $reportTarget, block: $blockTarget)
         .profileErrorAlert($errorMessage)
     }
 
@@ -91,8 +111,9 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var content: some View {
-        if let header = headerModel {
-            loadedContent(header)
+        let shown = shownPosts
+        if let header = adjustedHeaderModel(postCountAdjustment: shown.countAdjustment) {
+            loadedContent(header, posts: shown.posts)
         } else if let message = profileError {
             ProfileLoadFailedView(title: "Couldn't load this profile", message: message) {
                 // Back to the spinner while retrying.
@@ -110,7 +131,7 @@ struct ProfileView: View {
     }
 
     @ViewBuilder
-    private func loadedContent(_ header: ProfileHeaderModel) -> some View {
+    private func loadedContent(_ header: ProfileHeaderModel, posts shown: [FeedPost]) -> some View {
         if let message = profileError {
             ProfileInlineError(message: message) {
                 Task { await reloadAll() }
@@ -121,12 +142,22 @@ struct ProfileView: View {
             isSelf: isSelf,
             isFollowBusy: isFollowBusy,
             onToggleFollow: { Task { await toggleFollow() } },
-            onEditProfile: { showingEditProfile = true }
+            onEditProfile: { showingEditProfile = true },
+            onUnblock: unblockAction
         )
-        tabPicker
+        if isBlocked {
+            blockedNotice(header)
+        } else {
+            tabPicker
+            tabContent(header, posts: shown)
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(_ header: ProfileHeaderModel, posts shown: [FeedPost]) -> some View {
         switch selectedTab {
         case .posts:
-            postsSection
+            postsSection(shown)
         case .portfolio:
             ProfilePortfolioSection(
                 state: portfolioState,
@@ -148,8 +179,43 @@ struct ProfileView: View {
         .pickerStyle(.segmented)
     }
 
+    private func blockedNotice(_ header: ProfileHeaderModel) -> some View {
+        ContentUnavailableView {
+            Label("You blocked @\(header.username)", systemImage: "hand.raised")
+        } description: {
+            Text("You won't see their posts, comments or activity. Unblock them to see their profile again.")
+        }
+        .hakiCard()
+    }
+
+    /// Report and Block (or Unblock) for someone else's profile.
+    private func moderationMenu(_ header: ProfileHeaderModel) -> some View {
+        Menu {
+            Button {
+                reportTarget = .profile(userID: userID, username: header.username)
+            } label: {
+                Label("Report @\(header.username)", systemImage: "flag")
+            }
+            if isBlocked {
+                Button {
+                    Task { await unblock() }
+                } label: {
+                    Label("Unblock @\(header.username)", systemImage: "hand.raised.slash")
+                }
+            } else {
+                Button(role: .destructive) {
+                    blockTarget = SocialBlockTarget(userID: userID, username: header.username)
+                } label: {
+                    Label("Block @\(header.username)", systemImage: "hand.raised")
+                }
+            }
+        } label: {
+            Label("More options", systemImage: "ellipsis.circle")
+        }
+    }
+
     @ViewBuilder
-    private var postsSection: some View {
+    private func postsSection(_ shown: [FeedPost]) -> some View {
         if !postsLoaded {
             if let message = postsError {
                 ProfileInlineError(message: message) {
@@ -166,10 +232,10 @@ struct ProfileView: View {
                     Task { await reloadPosts() }
                 }
             }
-            if posts.isEmpty {
+            if shown.isEmpty {
                 emptyPosts
             } else {
-                ProfilePostsGrid(posts: posts) {
+                ProfilePostsGrid(posts: shown) {
                     Task { await loadMore() }
                 }
                 loadMoreFooter
@@ -222,6 +288,52 @@ struct ProfileView: View {
         auth.userID == userID
     }
 
+    private var isBlocked: Bool {
+        !isSelf && SocialBlockList.shared.isBlocked(userID)
+    }
+
+    /// The header's Unblock button, while they're blocked.
+    private var unblockAction: (() -> Void)? {
+        guard isBlocked else { return nil }
+        return { Task { await unblock() } }
+    }
+
+    /// The posts to show: on your own profile, posts you shared elsewhere
+    /// since the grid loaded, then the loaded posts with edits made anywhere
+    /// applied and deleted ones left out; plus how much that changes the
+    /// loaded post count.
+    private var shownPosts: ProfileShownPosts {
+        guard postsLoaded else { return ProfileShownPosts(posts: posts, countAdjustment: 0) }
+        let center = PostChangeCenter.shared
+        let known = Set(posts.map(\.id))
+        let newest = posts.first?.createdAt ?? .distantPast
+        var result: [FeedPost] = []
+        var adjustment = 0
+        for post in center.created where post.authorID == userID && !known.contains(post.id) && post.createdAt > newest {
+            if let resolved = center.resolve(post, loadedAt: 0) {
+                result.append(resolved)
+                adjustment += 1
+            }
+        }
+        for post in posts {
+            if let resolved = center.resolve(post, loadedAt: postLoadRevisions[post.id] ?? 0) {
+                result.append(resolved)
+            } else {
+                adjustment -= 1
+            }
+        }
+        return ProfileShownPosts(posts: result, countAdjustment: adjustment)
+    }
+
+    /// `headerModel` with the post count moved by posts created or deleted since it loaded.
+    private func adjustedHeaderModel(postCountAdjustment: Int) -> ProfileHeaderModel? {
+        guard var model = headerModel else { return nil }
+        if let count = model.postCount {
+            model.postCount = max(0, count + postCountAdjustment)
+        }
+        return model
+    }
+
     /// Loaded stats, with your own latest edits on top; for yourself, the
     /// signed-in profile right away while the stats load.
     private var headerModel: ProfileHeaderModel? {
@@ -252,6 +364,7 @@ struct ProfileView: View {
     // MARK: Loading
 
     private func loadIfNeeded() async {
+        PostChangeCenter.shared.prepare(for: auth.userID)
         if loadedUserID != userID {
             resetForNewUser()
             loadedUserID = userID
@@ -269,6 +382,7 @@ struct ProfileView: View {
         let id = userID
         let limit = Self.pageSize
         let includesPortfolio = selectedTab == .portfolio || portfolioState.isLoaded
+        let revision = PostChangeCenter.shared.revision
 
         async let fetchedProfile = social.profile(id: id)
         async let fetchedPosts = social.posts(byAuthor: id, before: nil, limit: limit)
@@ -288,7 +402,7 @@ struct ProfileView: View {
         do {
             let page = try await fetchedPosts
             guard id == userID else { return }
-            applyFirstPage(page)
+            applyFirstPage(page, loadedAt: revision)
         } catch {
             if Task.isCancelled || ProfileErrorInfo.isCancellation(error) { return }
             postsError = ProfileErrorInfo.message(for: error)
@@ -306,18 +420,20 @@ struct ProfileView: View {
     private func reloadPosts() async {
         postsError = nil
         let id = userID
+        let revision = PostChangeCenter.shared.revision
         do {
             let page = try await social.posts(byAuthor: id, before: nil, limit: Self.pageSize)
             guard id == userID else { return }
-            applyFirstPage(page)
+            applyFirstPage(page, loadedAt: revision)
         } catch {
             if Task.isCancelled || ProfileErrorInfo.isCancellation(error) { return }
             postsError = ProfileErrorInfo.message(for: error)
         }
     }
 
-    private func applyFirstPage(_ page: [FeedPost]) {
+    private func applyFirstPage(_ page: [FeedPost], loadedAt revision: Int) {
         posts = page
+        postLoadRevisions = Dictionary(page.map { ($0.id, revision) }, uniquingKeysWith: { first, _ in first })
         postsLoaded = true
         postsError = nil
         loadMoreError = nil
@@ -329,13 +445,18 @@ struct ProfileView: View {
     private func loadMore() async {
         guard postsLoaded, canLoadMore, !isLoadingMore, loadMoreError == nil, let last = posts.last else { return }
         let id = userID
+        let revision = PostChangeCenter.shared.revision
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
             let page = try await social.posts(byAuthor: id, before: last.createdAt, limit: Self.pageSize)
             guard id == userID else { return }
             let known = Set(posts.map(\.id))
-            posts.append(contentsOf: page.filter { !known.contains($0.id) })
+            let fresh = page.filter { !known.contains($0.id) }
+            posts.append(contentsOf: fresh)
+            for post in fresh {
+                postLoadRevisions[post.id] = revision
+            }
             canLoadMore = page.count >= Self.pageSize
         } catch {
             if ProfileErrorInfo.isCancellation(error) { return }
@@ -392,6 +513,7 @@ struct ProfileView: View {
         profileError = nil
         lastLoaded = nil
         posts = []
+        postLoadRevisions = [:]
         postsLoaded = false
         postsError = nil
         canLoadMore = false
@@ -405,7 +527,7 @@ struct ProfileView: View {
 
     /// Optimistic: flips the button and count right away, reverts on failure.
     private func toggleFollow() async {
-        guard !isSelf, !isFollowBusy, var current = profile else { return }
+        guard !isSelf, !isBlocked, !isFollowBusy, var current = profile else { return }
         let target = !current.followedByMe
         FollowToggle.set(target, on: &current)
         profile = current
@@ -423,6 +545,16 @@ struct ProfileView: View {
             }
         }
     }
+
+    private func unblock() async {
+        await SocialBlockList.shared.unblock(userID, social: social)
+    }
+}
+
+/// A profile's posts as shown, and how far they move the loaded post count.
+private struct ProfileShownPosts {
+    let posts: [FeedPost]
+    let countAdjustment: Int
 }
 
 private nonisolated enum ProfileContentTab: String, CaseIterable, Identifiable, Hashable {

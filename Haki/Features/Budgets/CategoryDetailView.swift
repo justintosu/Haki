@@ -216,7 +216,7 @@ struct CategoryDetailView: View {
     }
 
     private func paceStyle(_ progress: BudgetProgress, data: CategoryDetailData) -> CategoryPaceStyle {
-        switch progress.pace(elapsedDays: data.elapsedDays, daysInMonth: data.daysInMonth) {
+        switch data.pace(progress) {
         case .overBudget:
             return CategoryPaceStyle(title: "Over budget", systemImage: "exclamationmark.triangle.fill", color: Color.hakiNegative)
         case .aheadOfPace:
@@ -228,8 +228,7 @@ struct CategoryDetailView: View {
     }
 
     private func projectionText(_ progress: BudgetProgress, data: CategoryDetailData) -> String? {
-        guard data.isCurrentMonth, data.elapsedDays > 0 else { return nil }
-        let projected = progress.projectedCents(elapsedDays: data.elapsedDays, daysInMonth: data.daysInMonth)
+        guard let projected = data.projectedCents else { return nil }
         return "Projected: \(Money.format(projected, showsCents: false)) by month end"
     }
 
@@ -373,6 +372,11 @@ private struct CategoryDetailData {
     let isCurrentMonth: Bool
     let elapsedDays: Int
     let daysInMonth: Int
+    /// Expected month-end spending, only for a budgeted expense category in
+    /// the current month. The rest of the month is predicted from last
+    /// month's same days, so a bill paid on the 1st isn't extrapolated as if
+    /// it repeated daily.
+    let projectedCents: Int?
 
     init(
         category: TransactionCategory,
@@ -406,23 +410,46 @@ private struct CategoryDetailData {
 
         let active = totals.map { $0.cents }.filter { $0 != 0 }
         let activeSum = active.reduce(0, +)
+        let budget = kind == .expense && category.hasBudget ? category.monthlyBudgetCents : nil
+        let amount = totals.last?.cents ?? 0
+        let isCurrent = month == MonthInterval.current(calendar: calendar, now: now)
+        let elapsed = month.elapsedDays(asOf: now, calendar: calendar)
+
+        if budget != nil, isCurrent, elapsed > 0 {
+            let estimate = SpendingAnalytics.projectedSpending(own, month: month, asOf: now, calendar: calendar)
+            // Never project less than what's already been spent this month.
+            self.projectedCents = max(amount, estimate)
+        } else {
+            self.projectedCents = nil
+        }
 
         self.month = month
         self.kind = kind
-        self.budgetCents = kind == .expense && category.hasBudget ? category.monthlyBudgetCents : nil
-        self.amountCents = totals.last?.cents ?? 0
+        self.budgetCents = budget
+        self.amountCents = amount
         self.monthTotals = totals
         self.activeMonthCount = active.count
         self.averageCents = active.isEmpty ? 0 : Int((Double(activeSum) / Double(active.count)).rounded())
         self.monthTransactions = SpendingAnalytics.entries(own, in: month.dateInterval(in: calendar))
-        self.isCurrentMonth = month == MonthInterval.current(calendar: calendar, now: now)
-        self.elapsedDays = month.elapsedDays(asOf: now, calendar: calendar)
+        self.isCurrentMonth = isCurrent
+        self.elapsedDays = elapsed
         self.daysInMonth = month.numberOfDays(in: calendar)
     }
 
     var progress: BudgetProgress? {
         guard let budgetCents else { return nil }
         return BudgetProgress(budgetCents: budgetCents, spentCents: amountCents)
+    }
+
+    /// `BudgetProgress.pace`, except that spending ahead of an even pace
+    /// isn't flagged while the month-end projection stays within budget (a
+    /// big bill early in the month, like rent on the 1st).
+    func pace(_ progress: BudgetProgress) -> BudgetPace {
+        let straightLine = progress.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
+        if straightLine == .aheadOfPace, let projectedCents, projectedCents <= progress.budgetCents {
+            return .onTrack
+        }
+        return straightLine
     }
 
     /// How much of the month has passed, only for the current month.

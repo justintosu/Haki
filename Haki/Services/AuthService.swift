@@ -77,6 +77,16 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     /// Set by the actions that don't throw (`start`, `handleOpenURL`,
     /// `refreshProfile`); the throwing ones report through their error instead.
     var errorMessage: String?
+    /// The name Sign in with Apple shared, kept until onboarding is done.
+    ///
+    /// Apple shares it only on the first authorization, and onboarding can
+    /// appear before it's saved to the profile, so onboarding prefills from it.
+    private(set) var pendingAppleDisplayName: String?
+    /// Set when a password-reset link was just opened: the app asks for a new
+    /// password (`AuthSetNewPasswordView`) until `endPasswordRecovery()`.
+    private(set) var isRecoveringPassword = false
+    /// Whether the signed-in account has an email-and-password sign-in (so it can change its password).
+    private(set) var signsInWithPassword = false
 
     private let client: SupabaseClient?
     @ObservationIgnored private var authObservation: Task<Void, Never>?
@@ -130,6 +140,7 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             previewSignIn()
             return
         }
+        pendingAppleDisplayName = nil
         do {
             let session = try await client.auth.signInWithOAuth(
                 provider: .google,
@@ -163,6 +174,15 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         }
         appleRawNonce = nil
 
+        // Apple shares the name only on the very first authorization. Keep it
+        // before signing in: the SDK's sign-in event can route to onboarding
+        // before this call returns, and onboarding prefills from it. A failed
+        // attempt keeps it too, since Apple won't send it again.
+        let appleName = Self.limited(Self.displayName(from: fullName), to: 50)
+        if !appleName.isEmpty {
+            pendingAppleDisplayName = appleName
+        }
+
         let session: Session
         do {
             session = try await client.auth.signInWithIdToken(
@@ -173,20 +193,24 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         }
         await adopt(session.user)
 
-        // Apple shares the name only on the very first sign-in: keep it if the profile has none.
-        let name = Self.displayName(from: fullName)
-        if !name.isEmpty, let current = profile, current.id == session.user.id,
+        // Save the name if the profile has none, so it's kept even if onboarding is left unfinished.
+        if let name = pendingAppleDisplayName, let current = profile, current.id == session.user.id,
            current.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let changes = ProfileChanges(displayName: String(name.prefix(50)))
-            if let updated = try? await saveProfileChanges(changes, userID: current.id, client: client) {
+            let changes = ProfileChanges(displayName: name)
+            if let updated = try? await saveProfileChanges(changes, userID: current.id, client: client),
+               userID == updated.id {
                 applyProfile(updated)
             }
+        }
+        if profile?.onboarded == true {
+            pendingAppleDisplayName = nil
         }
     }
 
     func signUp(email: String, password: String) async throws -> EmailSignUpOutcome {
         let address = try Self.validatedEmail(email)
         guard let client else { return .confirmationEmailSent }
+        pendingAppleDisplayName = nil
         do {
             let response = try await client.auth.signUp(
                 email: address,
@@ -196,6 +220,11 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             if let session = response.session {
                 await adopt(session.user)
                 return .signedIn
+            }
+            // With email confirmation on, an address that already has an account
+            // gets a stand-in user without identities, and no email is sent.
+            if response.user.identities?.isEmpty == true {
+                throw AuthServiceError.accountExists
             }
             return .confirmationEmailSent
         } catch {
@@ -209,6 +238,7 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             previewSignIn()
             return
         }
+        pendingAppleDisplayName = nil
         let session: Session
         do {
             session = try await client.auth.signIn(email: address, password: password)
@@ -236,19 +266,44 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         } catch {
             throw friendlyError(error)
         }
+        // With PKCE the reset link comes back as a plain sign-in (no recovery
+        // event), so remember the request to recognize the link when it's opened.
+        Self.rememberPasswordResetRequest(for: address)
     }
 
     /// Handles haki://auth-callback links (email confirmation, password reset, OAuth).
     func handleOpenURL(_ url: URL) async {
         guard let client, Self.isAuthCallback(url) else { return }
+        pendingAppleDisplayName = nil
         do {
             let session = try await client.auth.session(from: url)
             errorMessage = nil
+            if Self.takePasswordResetRequest(matching: session.user) {
+                isRecoveringPassword = true
+            }
             await adopt(session.user)
         } catch {
             guard !Backend.isCancellation(error) else { return }
             errorMessage = friendlyError(error).localizedDescription
         }
+    }
+
+    /// Sets a new password for the signed-in user (after a password-reset link, or from Settings).
+    func updatePassword(_ newPassword: String) async throws {
+        guard newPassword.count >= Self.minimumPasswordLength else { throw AuthServiceError.weakPassword }
+        guard let client else { return }
+        guard userID != nil else { throw AuthServiceError.notSignedIn }
+        do {
+            try await client.auth.update(user: UserAttributes(password: newPassword))
+        } catch {
+            throw friendlyError(error)
+        }
+        Self.removePasswordResetRequest()
+    }
+
+    /// Stops asking for a new password: it was saved, or the user chose to keep the old one.
+    func endPasswordRecovery() {
+        isRecoveringPassword = false
     }
 
     // MARK: Profile
@@ -267,6 +322,7 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
                 updated.onboarded = true
                 profile = updated
             }
+            pendingAppleDisplayName = nil
             state = .signedIn
             return
         }
@@ -280,6 +336,7 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         )
         let updated = try await saveProfile(changes: changes, avatarJPEG: avatarJPEG, userID: uid, client: client)
         applyProfile(updated)
+        pendingAppleDisplayName = nil
         state = .signedIn
     }
 
@@ -316,6 +373,13 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             if let record {
                 applyProfile(record)
                 route(for: record)
+            } else if state == .loading {
+                // Retried from the launch screen: same outcome as the first load.
+                if client?.auth.currentSession == nil {
+                    resetToSignedOut()
+                } else {
+                    state = .needsOnboarding
+                }
             }
             errorMessage = nil
         } catch {
@@ -376,8 +440,14 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             } else {
                 resetToSignedOut()
             }
+        case .passwordRecovery:
+            // Only sent for implicit-flow links; PKCE reset links are recognized in `handleOpenURL`.
+            if let session {
+                isRecoveringPassword = true
+                await adopt(session.user)
+            }
         default:
-            // signedIn, tokenRefreshed, userUpdated, passwordRecovery, mfaChallengeVerified
+            // signedIn, tokenRefreshed, userUpdated, mfaChallengeVerified
             if let session {
                 await adopt(session.user)
             }
@@ -393,6 +463,7 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         } else if !isSameUser {
             email = nil
         }
+        signsInWithPassword = user.identities?.contains(where: { $0.provider == "email" }) ?? false
         if isSameUser, profile != nil, state == .signedIn || state == .needsOnboarding {
             return
         }
@@ -404,6 +475,12 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     }
 
     private func loadProfileAndRoute(_ uid: UUID) async {
+        if profile == nil || state == .loading, let cached = Self.cachedProfile(for: uid) {
+            // Go straight in with the last known profile (even on a slow or
+            // offline network); the fetch below refreshes it.
+            profile = cached
+            route(for: cached)
+        }
         var attempt = 0
         while true {
             do {
@@ -425,24 +502,41 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             } catch {
                 guard userID == uid, !Backend.isCancellation(error) else { return }
                 if let cached = Self.cachedProfile(for: uid) {
-                    // Offline: carry on with the last known profile.
-                    profile = cached
-                    route(for: cached)
+                    // Offline: carry on with the last known profile (normally already shown above).
+                    if profile == nil {
+                        profile = cached
+                        route(for: cached)
+                    }
                     return
                 }
                 attempt += 1
-                if attempt < 3, error is URLError {
+                if attempt < 3, Self.isTransient(error) {
                     try? await Task.sleep(for: .seconds(Double(attempt) * 1.5))
+                    guard userID == uid else { return }
                     continue
                 }
-                // Nothing to go on: let the user in; `refreshProfile()` loads it later.
-                if state == .loading || state == .signedOut {
-                    state = .signedIn
+                // Whether this account has finished onboarding (and chosen what to
+                // share) is unknown, so don't let it into the app. The launch screen
+                // shows this message with "Try again" and "Sign out".
+                if state != .needsOnboarding {
+                    state = .loading
                 }
                 errorMessage = "Couldn't load your profile. Check your connection and try again."
                 return
             }
         }
+    }
+
+    /// Failures worth retrying: network trouble, or the database being briefly unavailable.
+    private static func isTransient(_ error: any Error) -> Bool {
+        if error is URLError { return true }
+        if let httpError = error as? HTTPError {
+            return httpError.response.statusCode >= 500
+        }
+        if let postgrestError = error as? PostgrestError, let code = postgrestError.code {
+            return ["PGRST000", "PGRST001", "PGRST002", "PGRST003", "57014"].contains(code)
+        }
+        return false
     }
 
     private func route(for record: ProfileRecord) {
@@ -461,6 +555,9 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         profile = nil
         userID = nil
         email = nil
+        pendingAppleDisplayName = nil
+        isRecoveringPassword = false
+        signsInWithPassword = false
         state = .signedOut
     }
 
@@ -571,6 +668,10 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
                 return AuthServiceError.accountExists
             case .weakPassword:
                 return AuthServiceError.weakPassword
+            case .samePassword:
+                return AuthServiceError.message("Choose a password that's different from your current one.")
+            case .reauthenticationNeeded, .reauthenticationNotValid:
+                return AuthServiceError.message("For your security, sign out and use “Forgot password?” on the sign-in screen to choose a new password.")
             case .overRequestRateLimit, .overEmailSendRateLimit:
                 return AuthServiceError.rateLimited
             case .flowStateNotFound, .flowStateExpired, .badCodeVerifier, .otpExpired:
@@ -614,6 +715,17 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     }
 
     // MARK: - Validation
+
+    /// Matches the sign-up form's rule.
+    static let minimumPasswordLength = 8
+
+    /// Cuts `text` to at most `limit` Unicode scalars (how Postgres counts characters).
+    private static func limited(_ text: String, to limit: Int) -> String {
+        guard text.unicodeScalars.count > limit else { return text }
+        var result = ""
+        result.unicodeScalars.append(contentsOf: text.unicodeScalars.prefix(limit))
+        return result
+    }
 
     private static func validatedEmail(_ email: String) throws -> String {
         let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -704,6 +816,46 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     private static func removeCachedProfile(for uid: UUID) {
         UserDefaults.standard.removeObject(forKey: cacheKey(for: uid))
     }
+
+    // MARK: - Password reset requests
+
+    /// Stored (not in memory) because the app may be closed before the link is opened.
+    private static let passwordResetKey = "haki.auth.passwordReset"
+    /// How long a request is matched to a link. Reset links last an hour by
+    /// default (a day at most); an expired one fails before it gets here.
+    private static let passwordResetLifetime: TimeInterval = 24 * 60 * 60
+
+    private static func rememberPasswordResetRequest(for email: String) {
+        let request = AuthPasswordResetRequest(email: email.lowercased(), sentAt: .now)
+        guard let data = try? JSONEncoder().encode(request) else { return }
+        UserDefaults.standard.set(data, forKey: passwordResetKey)
+    }
+
+    /// Whether `user` just signed in through the reset link requested on this
+    /// iPhone. Forgets the request when it matches or has expired.
+    private static func takePasswordResetRequest(matching user: User) -> Bool {
+        guard let data = UserDefaults.standard.data(forKey: passwordResetKey),
+              let request = try? JSONDecoder().decode(AuthPasswordResetRequest.self, from: data)
+        else { return false }
+        let age = Date.now.timeIntervalSince(request.sentAt)
+        guard age > -300, age < passwordResetLifetime else {
+            removePasswordResetRequest()
+            return false
+        }
+        guard let address = user.email?.lowercased(), address == request.email else { return false }
+        removePasswordResetRequest()
+        return true
+    }
+
+    private static func removePasswordResetRequest() {
+        UserDefaults.standard.removeObject(forKey: passwordResetKey)
+    }
+}
+
+/// A "Forgot password?" request made on this device.
+nonisolated private struct AuthPasswordResetRequest: Codable {
+    let email: String
+    let sentAt: Date
 }
 
 // MARK: - Request bodies

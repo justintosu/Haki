@@ -79,23 +79,36 @@ import Supabase
             return Self.page(store.posts.filter { Self.post($0, mentions: symbol) }, before: before, limit: pageSize)
         }
 
-        // The caption filter is a substring match ("$AAPL" also matches "$AAPLX"),
-        // so check matches exactly here, fetching a few more pages if needed to fill this one.
+        // The server narrows the candidates with a cashtag pattern; matches are
+        // checked exactly here. Keep fetching until this page is full or the
+        // candidates run out, so a short page really means the end (the feed
+        // stops paging on one).
+        let substringFilter = Self.cashtagSubstringFilter(for: symbol)
+        var captionFilter = Self.cashtagPatternFilter(for: symbol)
         var result: [FeedPost] = []
         var seen = Set<UUID>()
         var cursor = before
+        var batches = 0
         do {
-            for _ in 0..<4 {
+            while batches < 8 {
                 var query = client.from("feed_posts").select()
-                    .or("ticker.eq.\(symbol),caption.ilike.*$\(symbol)*")
+                    .or("ticker.eq.\(symbol),\(captionFilter)")
                 if let cursor {
                     query = query.lt("created_at", value: socialTimestamp(cursor))
                 }
-                let batch: [FeedPost] = try await query
-                    .order("created_at", ascending: false)
-                    .limit(pageSize)
-                    .execute()
-                    .value
+                let batch: [FeedPost]
+                do {
+                    batch = try await query
+                        .order("created_at", ascending: false)
+                        .limit(pageSize)
+                        .execute()
+                        .value
+                } catch let error as PostgrestError where captionFilter != substringFilter && Self.isRejectedFilter(error) {
+                    // The pattern wasn't accepted: fall back to the looser substring match.
+                    captionFilter = substringFilter
+                    continue
+                }
+                batches += 1
                 for post in batch where Self.post(post, mentions: symbol) && seen.insert(post.id).inserted {
                     result.append(post)
                 }
@@ -248,20 +261,21 @@ import Supabase
         }
     }
 
-    /// Oldest first.
+    /// Oldest first: the newest 500, so recent comments are never cut off.
     func comments(postID: UUID) async throws -> [PostComment] {
         guard let client else {
             return store.comments.filter { $0.postID == postID }.sorted { $0.createdAt < $1.createdAt }
         }
         do {
-            return try await client
+            let newest: [PostComment] = try await client
                 .from("comment_details")
                 .select()
                 .eq("post_id", value: postID)
-                .order("created_at", ascending: true)
+                .order("created_at", ascending: false)
                 .limit(500)
                 .execute()
                 .value
+            return Array(newest.reversed())
         } catch {
             throw Backend.userFacingError(error, fallback: "Couldn't load comments. Try again.")
         }
@@ -412,7 +426,11 @@ import Supabase
             }
         }
         do {
-            return try await client.rpc("search_profiles", params: SocialSearchParams(query: text, limit: 30)).execute().value
+            let found: [UserProfile] = try await client
+                .rpc("search_profiles", params: SocialSearchParams(query: text, limit: 30))
+                .execute()
+                .value
+            return try await Self.onlyOnboarded(found, client: client)
         } catch {
             throw Backend.userFacingError(error, fallback: "Couldn't search. Try again.")
         }
@@ -424,7 +442,11 @@ import Supabase
             return store.allProfiles().filter { $0.id != store.me && !$0.followedByMe }
         }
         do {
-            return try await client.rpc("suggested_profiles", params: SocialLimitParams(limit: 20)).execute().value
+            let suggested: [UserProfile] = try await client
+                .rpc("suggested_profiles", params: SocialLimitParams(limit: 20))
+                .execute()
+                .value
+            return try await Self.onlyOnboarded(suggested, client: client)
         } catch {
             throw Backend.userFacingError(error, fallback: "Couldn't load suggestions. Try again.")
         }
@@ -493,7 +515,47 @@ import Supabase
     }
 
     private static func post(_ post: FeedPost, mentions symbol: String) -> Bool {
-        post.ticker?.uppercased() == symbol || Cashtags.extract(from: post.caption).contains(symbol)
+        if Cashtags.extract(from: post.caption).contains(symbol) { return true }
+        // A regular post's `ticker` is the first cashtag its caption had when it
+        // was posted, and can't change: after an edit only the caption counts.
+        return post.kind != .post && post.ticker?.uppercased() == symbol
+    }
+
+    /// Server-side candidates for a cashtag: captions with "$SYMBOL" not followed
+    /// by a letter or digit (a regular expression, so "$V" skips every "$VTI").
+    /// Never stricter than `Cashtags`; `post(_:mentions:)` checks exactly.
+    private static func cashtagPatternFilter(for symbol: String) -> String {
+        let escaped = symbol.replacingOccurrences(of: ".", with: "[.]")
+        // `Cashtags` stops after 10 characters, so a 10-character one may run on.
+        let boundary = symbol.count >= 10 ? "" : "([^A-Za-z0-9]|$)"
+        return "caption.imatch.\"[$]\(escaped)\(boundary)\""
+    }
+
+    /// The looser fallback: any caption containing "$SYMBOL".
+    private static func cashtagSubstringFilter(for symbol: String) -> String {
+        "caption.ilike.*$\(symbol)*"
+    }
+
+    /// Whether the server refused the filter itself (couldn't parse it, or the
+    /// regular expression), rather than failing for another reason.
+    private static func isRejectedFilter(_ error: PostgrestError) -> Bool {
+        guard let code = error.code else { return false }
+        return ["PGRST100", "2201B", "42883"].contains(code)
+    }
+
+    /// Leaves out accounts that never finished onboarding: their username and
+    /// name come from the sign-up email and provider, not a choice to be found.
+    private static func onlyOnboarded(_ profiles: [UserProfile], client: SupabaseClient) async throws -> [UserProfile] {
+        guard !profiles.isEmpty else { return profiles }
+        let rows: [SocialProfileID] = try await client
+            .from("profiles")
+            .select("id")
+            .`in`("id", values: profiles.map(\.id.uuidString))
+            .eq("onboarded", value: true)
+            .execute()
+            .value
+        let onboarded = Set(rows.map(\.id))
+        return profiles.filter { onboarded.contains($0.id) }
     }
 
     /// The `ticker` column: the draft's, or for a regular post the first cashtag
@@ -663,6 +725,10 @@ nonisolated private struct SocialCommentInsert: Encodable {
         case postID = "post_id"
         case body
     }
+}
+
+nonisolated private struct SocialProfileID: Decodable {
+    let id: UUID
 }
 
 nonisolated private struct SocialFollowRow: Decodable {

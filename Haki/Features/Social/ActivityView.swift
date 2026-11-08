@@ -41,8 +41,15 @@ struct ActivityView: View {
         }
     }
 
+    /// The activity, without people you blocked.
+    private var visibleItems: [ActivityItem] {
+        let blockList = SocialBlockList.shared
+        return items.filter { !blockList.isBlocked($0.actorID) }
+    }
+
     @ViewBuilder private var content: some View {
-        if items.isEmpty {
+        let visible = visibleItems
+        if visible.isEmpty {
             switch phase {
             case .idle, .loading:
                 ProgressView("Loading activity…")
@@ -69,7 +76,7 @@ struct ActivityView: View {
                 .padding(.top, 40)
             }
         } else {
-            ForEach(sections) { section in
+            ForEach(sections(of: visible)) { section in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(section.title)
                         .font(.headline)
@@ -89,7 +96,7 @@ struct ActivityView: View {
         }
     }
 
-    private var sections: [ActivitySection] {
+    private func sections(of items: [ActivityItem]) -> [ActivitySection] {
         let calendar = Calendar.current
         let now = Date.now
         var today: [ActivityItem] = []
@@ -239,13 +246,13 @@ private struct ActivityRow: View {
     @ViewBuilder private var thumbnail: some View {
         Group {
             if let url = item.postImageURL {
-                AsyncImage(url: url) { phase in
+                SocialThumbnailImage(url: url, side: 48) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()
                     case .failure:
                         thumbnailPlaceholder
-                    default:
+                    case .loading:
                         ProgressView()
                     }
                 }

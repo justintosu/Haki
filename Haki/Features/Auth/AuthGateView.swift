@@ -16,6 +16,9 @@ struct AuthGateView: View {
     @Environment(PortfolioService.self) private var portfolio
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Follows `auth.isRecoveringPassword`, a moment late (see the `.task` below).
+    @State private var showingNewPassword = false
+
     var body: some View {
         ZStack {
             switch auth.state {
@@ -49,14 +52,50 @@ struct AuthGateView: View {
                 portfolio.reset()
             }
         }
+        // A password-reset link was opened: ask for a new password, over
+        // whichever screen is showing.
+        .sheet(isPresented: $showingNewPassword, onDismiss: {
+            // Swiped away: keep the current password.
+            auth.endPasswordRecovery()
+        }) {
+            AuthSetNewPasswordView()
+        }
+        .task(id: auth.isRecoveringPassword) {
+            guard auth.isRecoveringPassword else {
+                showingNewPassword = false
+                return
+            }
+            // Let the previous screen's sheet (e.g. email sign-in) finish closing first.
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled, auth.isRecoveringPassword else { return }
+            showingNewPassword = true
+        }
     }
 }
 
-/// A calm launch screen shown while the saved session is restored.
+/// A calm launch screen shown while the saved session is restored. When the
+/// signed-in user's profile can't be loaded (or takes long), it offers to try
+/// again or sign out.
 private struct AuthLaunchView: View {
+    @Environment(AuthService.self) private var auth
+    @Environment(\.scenePhase) private var scenePhase
     @State private var appeared = false
+    /// Set after a few seconds without a profile.
+    @State private var isTakingLong = false
+    @State private var isRetrying = false
+    @State private var isSigningOut = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var markSize: CGFloat = 84
+
+    /// Only for a signed-in user (not while the saved session is being read).
+    private var showsOptions: Bool {
+        auth.userID != nil && (auth.errorMessage != nil || isTakingLong)
+    }
+
+    /// The profile load gave up; the spinner stops until "Try again".
+    private var isSpinning: Bool {
+        isRetrying || auth.userID == nil || auth.errorMessage == nil
+    }
 
     var body: some View {
         ZStack {
@@ -68,16 +107,31 @@ private struct AuthLaunchView: View {
             )
 
             VStack(spacing: 18) {
-                launchMark
-                Text("Haki")
-                    .font(.system(.largeTitle, design: .rounded).weight(.heavy))
-                    .foregroundStyle(.white)
-                ProgressView()
-                    .tint(.white)
-                    .padding(.top, 8)
+                VStack(spacing: 18) {
+                    launchMark
+                    Text("Haki")
+                        .font(.system(.largeTitle, design: .rounded).weight(.heavy))
+                        .foregroundStyle(.white)
+                    if isSpinning {
+                        ProgressView()
+                            .tint(.white)
+                            .padding(.top, 8)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Haki")
+                .accessibilityValue(isSpinning ? Text("Loading") : Text(verbatim: ""))
+
+                if showsOptions {
+                    options
+                        .transition(.opacity)
+                }
             }
+            .padding(.horizontal, 32)
+            .frame(maxWidth: 420)
             .scaleEffect(appeared || reduceMotion ? 1 : 0.94)
             .opacity(appeared ? 1 : 0)
+            .animation(.easeInOut(duration: 0.25), value: showsOptions)
         }
         .ignoresSafeArea()
         .onAppear {
@@ -85,9 +139,65 @@ private struct AuthLaunchView: View {
                 appeared = true
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Haki")
-        .accessibilityValue("Loading")
+        .task {
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            isTakingLong = true
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Back from Settings (e.g. after turning Wi-Fi on): try again right away.
+            if newPhase == .active, auth.userID != nil, auth.errorMessage != nil {
+                Task { await retry() }
+            }
+        }
+    }
+
+    private var options: some View {
+        VStack(spacing: 14) {
+            Text(auth.errorMessage ?? "This is taking longer than usual. Check your connection.")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                Task { await retry() }
+            } label: {
+                Text(isRetrying ? "Trying again…" : "Try again")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isRetrying || isSigningOut)
+
+            Button {
+                Task { await signOut() }
+            } label: {
+                Text(isSigningOut ? "Signing out…" : "Sign out")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isRetrying || isSigningOut)
+        }
+    }
+
+    private func retry() async {
+        guard !isRetrying, !isSigningOut else { return }
+        isRetrying = true
+        defer { isRetrying = false }
+        await auth.refreshProfile()
+    }
+
+    private func signOut() async {
+        guard !isSigningOut else { return }
+        isSigningOut = true
+        defer { isSigningOut = false }
+        await auth.signOut()
     }
 
     private var launchMark: some View {

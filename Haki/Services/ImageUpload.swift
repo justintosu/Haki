@@ -8,33 +8,53 @@
 
 import CoreGraphics
 import Foundation
-import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 
-enum ImageUpload {
+nonisolated enum ImageUpload {
     /// Downscales to at most `maxDimension` px on the long side and encodes JPEG. nil if the data isn't an image.
+    ///
+    /// Decodes only a downscaled copy (ImageIO thumbnailing), never the whole
+    /// photo. On the main actor, prefer `makeJPEG(from:maxDimension:quality:)`.
     static func jpegData(from imageData: Data, maxDimension: CGFloat, quality: CGFloat) -> Data? {
-        // `UIImage(data:)` has scale 1, so `size` is in pixels, already rotated to the photo's orientation.
-        guard let image = UIImage(data: imageData) else { return nil }
-        let size = image.size
-        guard size.width > 0, size.height > 0 else { return nil }
+        let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithData(imageData as CFData, sourceOptions as CFDictionary),
+              CGImageSourceGetCount(source) > 0
+        else { return nil }
 
-        let longSide = max(size.width, size.height)
-        let factor = maxDimension > 0 && longSide > maxDimension ? maxDimension / longSide : 1
-        let target = CGSize(
-            width: max(1, (size.width * factor).rounded()),
-            height: max(1, (size.height * factor).rounded())
-        )
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        let renderer = UIGraphicsImageRenderer(size: target, format: format)
-        let rendered = renderer.image { context in
-            // JPEG has no transparency: put see-through images on white instead of black.
-            UIColor.white.setFill()
-            context.fill(CGRect(origin: .zero, size: target))
-            image.draw(in: CGRect(origin: .zero, size: target))
+        var thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            // Rotated to the photo's orientation, so no orientation tag is needed.
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        if maxDimension > 0 {
+            thumbnailOptions[kCGImageSourceThumbnailMaxPixelSize] = max(1, Int(maxDimension.rounded()))
         }
-        return rendered.jpegData(compressionQuality: min(max(quality, 0), 1))
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary),
+              image.width > 0, image.height > 0
+        else { return nil }
+
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        // Only the pixels: none of the original's metadata is copied.
+        let properties: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: min(max(quality, 0), 1),
+            // JPEG has no transparency: put see-through images on white instead of black.
+            kCGImageDestinationBackgroundColor: CGColor(gray: 1, alpha: 1),
+        ]
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
+    }
+
+    /// `jpegData(from:maxDimension:quality:)` off the main thread, so large
+    /// photos (48 MP, panoramas) don't freeze the UI while they're prepared.
+    static func makeJPEG(from imageData: Data, maxDimension: CGFloat, quality: CGFloat) async -> Data? {
+        await Task.detached(priority: .userInitiated) {
+            ImageUpload.jpegData(from: imageData, maxDimension: maxDimension, quality: quality)
+        }.value
     }
 }

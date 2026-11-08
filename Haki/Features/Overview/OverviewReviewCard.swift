@@ -5,6 +5,10 @@
 //  "To review": the newest transactions that still need a look, each with a
 //  one-tap "mark reviewed" button, or a small all-caught-up state.
 //
+//  Rows don't push the detail screen themselves: reviewing a transaction
+//  removes its row, and a row's `NavigationLink` going away pops the screen
+//  it opened. `OverviewView` pushes it instead (see `onOpen`).
+//
 
 import Foundation
 import SwiftData
@@ -13,6 +17,8 @@ import SwiftUI
 struct OverviewReviewCard: View {
     /// Unreviewed transactions, newest first.
     let transactions: [TransactionRecord]
+    /// Opens a transaction's detail screen.
+    let onOpen: (TransactionRecord) -> Void
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppRouter.self) private var router
@@ -76,8 +82,8 @@ struct OverviewReviewCard: View {
 
     private func row(for transaction: TransactionRecord) -> some View {
         HStack(spacing: 4) {
-            NavigationLink {
-                TransactionDetailView(transaction: transaction)
+            Button {
+                onOpen(transaction)
             } label: {
                 TransactionRow(transaction: transaction, showsDate: true)
                     .contentShape(Rectangle())
@@ -130,7 +136,7 @@ struct OverviewReviewCard: View {
 #Preview("To review") {
     NavigationStack {
         ScrollView {
-            OverviewReviewCard(transactions: OverviewPreviewData.unreviewed)
+            OverviewReviewCard(transactions: OverviewPreviewData.unreviewed, onOpen: { _ in })
                 .padding()
         }
         .background(Color.hakiBackground)
@@ -140,7 +146,7 @@ struct OverviewReviewCard: View {
 
 #Preview("Caught up") {
     ScrollView {
-        OverviewReviewCard(transactions: [])
+        OverviewReviewCard(transactions: [], onOpen: { _ in })
             .padding()
     }
     .background(Color.hakiBackground)

@@ -143,7 +143,8 @@ nonisolated extension FeedPost {
         ticker = try container.decodeIfPresent(String.self, forKey: .ticker)
         let sideValue = try container.decodeIfPresent(String.self, forKey: .tradeSide)
         tradeSide = sideValue.flatMap { TradeSide(rawValue: $0) }
-        attachment = (try? container.decodeIfPresent(SharedPortfolio.self, forKey: .attachment)) ?? nil
+        let sharedPortfolio = (try? container.decodeIfPresent(SharedPortfolio.self, forKey: .attachment)) ?? nil
+        attachment = sharedPortfolio.map(remoteDisplayablePortfolio)
         likeCount = try container.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
         commentCount = try container.decodeIfPresent(Int.self, forKey: .commentCount) ?? 0
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -465,6 +466,23 @@ nonisolated enum FollowListMode: String, Hashable {
 }
 
 // MARK: - Helpers
+
+/// Attachments are written by clients, so keep only what a real snapshot holds
+/// (the app shares the top 5 plus "Other"): a few holdings with distinct
+/// tickers and weights within 0–100. A crafted one can't flood every feed
+/// that shows it, or repeat a ticker that lists use as an identity.
+nonisolated private func remoteDisplayablePortfolio(_ portfolio: SharedPortfolio) -> SharedPortfolio {
+    let maxHoldings = 10
+    var tickers = Set<String>()
+    var holdings: [SharedPortfolio.Item] = []
+    for item in portfolio.holdings {
+        guard holdings.count < maxHoldings else { break }
+        guard tickers.insert(item.ticker).inserted else { continue }
+        let weight = item.weightPct.isFinite ? min(max(item.weightPct, 0), 100) : 0
+        holdings.append(SharedPortfolio.Item(ticker: item.ticker, weightPct: weight))
+    }
+    return SharedPortfolio(holdings: holdings, totalGainPct: portfolio.totalGainPct)
+}
 
 nonisolated private func remoteDisplayName(_ displayName: String, fallback username: String) -> String {
     let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)

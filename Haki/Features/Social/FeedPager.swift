@@ -33,8 +33,10 @@ import Observation
 
     @ObservationIgnored private var ownerID: UUID?
 
-    /// Forgets everything when a different account signs in.
+    /// Forgets everything when a different account signs in (and loads that
+    /// account's block list).
     func prepare(for userID: UUID?) {
+        SocialBlockList.shared.prepare(for: userID)
         guard ownerID != userID else { return }
         ownerID = userID
         guard !changes.isEmpty || !deletedIDs.isEmpty || !created.isEmpty else { return }
@@ -176,9 +178,10 @@ import Observation
 
     /// The posts to show: posts created this session that belong in this list
     /// (newer than everything loaded), then the loaded posts, with changes made
-    /// elsewhere applied and deleted posts left out.
+    /// elsewhere applied, and deleted posts and posts by blocked people left out.
     func visiblePosts(includingCreated belongs: (FeedPost) -> Bool) -> [FeedPost] {
         let center = PostChangeCenter.shared
+        let blockList = SocialBlockList.shared
         var result: [FeedPost] = []
         if phase == .loaded {
             let known = Set(posts.map(\.id))
@@ -189,7 +192,7 @@ import Observation
                 }
             }
         }
-        for post in posts {
+        for post in posts where !blockList.isBlocked(post.authorID) {
             if let resolved = center.resolve(post, loadedAt: loadRevisions[post.id] ?? 0) {
                 result.append(resolved)
             }

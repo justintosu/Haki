@@ -2,8 +2,8 @@
 //  ProfileHeaderView.swift
 //  Haki
 //
-//  The top of a profile: photo, counts, name, @username, bio, and Follow or
-//  Edit profile.
+//  The top of a profile: photo, counts, name, @username, bio, and Follow,
+//  Unblock or Edit profile.
 //
 
 import Foundation
@@ -70,19 +70,25 @@ struct ProfileHeaderView: View {
     let isFollowBusy: Bool
     let onToggleFollow: () -> Void
     let onEditProfile: () -> Void
+    /// Set while you've blocked this person: shows Unblock instead of Follow.
+    let onUnblock: (() -> Void)?
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(
         model: ProfileHeaderModel,
         isSelf: Bool,
         isFollowBusy: Bool = false,
         onToggleFollow: @escaping () -> Void = {},
-        onEditProfile: @escaping () -> Void = {}
+        onEditProfile: @escaping () -> Void = {},
+        onUnblock: (() -> Void)? = nil
     ) {
         self.model = model
         self.isSelf = isSelf
         self.isFollowBusy = isFollowBusy
         self.onToggleFollow = onToggleFollow
         self.onEditProfile = onEditProfile
+        self.onUnblock = onUnblock
     }
 
     var body: some View {
@@ -94,28 +100,46 @@ struct ProfileHeaderView: View {
         .hakiCard()
     }
 
+    /// Photo beside the counts; at accessibility text sizes, the photo above
+    /// the counts listed one per line, so they aren't truncated.
+    @ViewBuilder
     private var topRow: some View {
-        HStack(spacing: 12) {
-            AvatarView(url: model.avatarURL, name: model.name, size: 84)
-            HStack(spacing: 0) {
-                ProfileStatView(value: model.postCount, singular: "post", plural: "posts", title: "Posts")
-                NavigationLink {
-                    FollowListView(userID: model.id, mode: .followers)
-                } label: {
-                    ProfileStatView(value: model.followerCount, singular: "follower", plural: "followers", title: "Followers")
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 12) {
+                AvatarView(url: model.avatarURL, name: model.name, size: 84)
+                VStack(alignment: .leading, spacing: 6) {
+                    stats(stacked: true)
                 }
-                .buttonStyle(.plain)
-                .accessibilityHint("Shows who follows \(model.username).")
-                NavigationLink {
-                    FollowListView(userID: model.id, mode: .following)
-                } label: {
-                    ProfileStatView(value: model.followingCount, singular: "following", plural: "following", title: "Following")
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Shows who \(model.username) follows.")
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: 12) {
+                AvatarView(url: model.avatarURL, name: model.name, size: 84)
+                HStack(spacing: 0) {
+                    stats(stacked: false)
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
+    }
+
+    @ViewBuilder
+    private func stats(stacked: Bool) -> some View {
+        ProfileStatView(value: model.postCount, singular: "post", plural: "posts", title: "Posts", isStacked: stacked)
+        NavigationLink {
+            FollowListView(userID: model.id, mode: .followers)
+        } label: {
+            ProfileStatView(value: model.followerCount, singular: "follower", plural: "followers", title: "Followers", isStacked: stacked)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows who follows \(model.username).")
+        NavigationLink {
+            FollowListView(userID: model.id, mode: .following)
+        } label: {
+            ProfileStatView(value: model.followingCount, singular: "following", plural: "following", title: "Following", isStacked: stacked)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows who \(model.username) follows.")
     }
 
     private var identity: some View {
@@ -153,6 +177,15 @@ struct ProfileHeaderView: View {
             }
             .buttonStyle(.bordered)
             .tint(Color.primary)
+        } else if let onUnblock {
+            Button(action: onUnblock) {
+                Text("Unblock")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(Color.primary)
+            .accessibilityLabel("Unblock \(model.name)")
         } else {
             FollowButton(
                 isFollowing: model.followedByMe,
@@ -170,32 +203,50 @@ struct ProfileHeaderView: View {
     }
 }
 
-/// "128" over "Followers".
+/// "128" over "Followers", or "128 Followers" on one line when stacked.
 private struct ProfileStatView: View {
     let value: Int?
     let singular: String
     let plural: String
     let title: String
+    /// One of a vertical list (accessibility text sizes) rather than a column.
+    let isStacked: Bool
 
     var body: some View {
-        VStack(spacing: 2) {
-            Text(valueText)
-                .font(.headline)
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+        Group {
+            if isStacked {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    valueLabel
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(spacing: 2) {
+                    valueLabel
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
-        .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spokenText)
+    }
+
+    private var valueLabel: some View {
+        Text(valueText)
+            .font(.headline)
+            .monospacedDigit()
+            .contentTransition(.numericText())
     }
 
     private var valueText: String {

@@ -68,11 +68,16 @@ struct RecurringScreenModel {
 
     /// - Parameters:
     ///   - transactions: every transaction; only a window around this month is
-    ///     used for payment matching, the whole history for suggestions.
+    ///     used for payment matching.
+    ///   - candidates: `RecurringDetector.candidates(from:)` over the whole
+    ///     history. Detection is the expensive part, so the view caches it
+    ///     instead of rescanning the history on every render; tracked and
+    ///     dismissed merchants are filtered out here.
     ///   - dismissedKeys: merchant keys of suggestions the user dismissed.
     init(
         items: [RecurringItem],
         transactions: [TransactionRecord],
+        candidates: [RecurringCandidate],
         dismissedKeys: Set<String>,
         now: Date,
         calendar: Calendar = .current
@@ -121,12 +126,17 @@ struct RecurringScreenModel {
         var found: [Occurrence] = []
         for bill in active {
             let item = bill.item
+            // Only this bill's merchant can pay it; narrowing first keeps the
+            // matcher's date math to a handful of charges.
+            let merchantCharges = nearby.filter {
+                Categorizer.ruleMatches(ruleKey: item.merchantKey, merchantKey: $0.merchantKey)
+            }
             for dueDate in item.schedule.occurrences(in: interval, calendar: calendar) {
                 let status = RecurringMatcher.status(
                     dueDate: dueDate,
                     merchantKey: item.merchantKey,
                     frequency: item.frequency,
-                    entries: nearby,
+                    entries: merchantCharges,
                     now: now,
                     calendar: calendar
                 )
@@ -175,14 +185,9 @@ struct RecurringScreenModel {
         // matching rule key) and ones the user dismissed.
         let trackedKeys = items.map(\.merchantKey)
         let excluded = Set(trackedKeys).union(dismissedKeys)
-        let candidates = RecurringDetector.candidates(
-            from: transactions,
-            now: now,
-            calendar: calendar,
-            excludingMerchantKeys: excluded
-        )
         self.suggestions = candidates.filter { candidate in
-            !trackedKeys.contains { Categorizer.ruleMatches(ruleKey: $0, merchantKey: candidate.merchantKey) }
+            !excluded.contains(candidate.merchantKey)
+                && !trackedKeys.contains { Categorizer.ruleMatches(ruleKey: $0, merchantKey: candidate.merchantKey) }
         }
     }
 }

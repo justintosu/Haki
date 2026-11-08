@@ -23,20 +23,34 @@ struct OverviewCategorySpend: Identifiable {
     let cents: Int
 }
 
-/// A recurring bill that's due soon.
+/// A recurring bill that's due soon, or overdue.
 struct OverviewUpcomingBill: Identifiable {
-    let id: UUID
+    /// The bill and its due date: a weekly bill can be late and due again soon.
+    let id: String
     let item: RecurringItem
     let dueDate: Date
-    /// Whole days from today; 0 is today.
+    /// Whole days from today; 0 is today, negative when overdue.
     let daysUntil: Int
     /// A matching charge was already found for this due date.
     let isPaid: Bool
+    /// The due date has passed and no matching charge was found.
+    let isLate: Bool
+
+    init(item: RecurringItem, dueDate: Date, daysUntil: Int, isPaid: Bool, isLate: Bool) {
+        self.id = "\(item.id.uuidString)-\(Int(dueDate.timeIntervalSince1970))"
+        self.item = item
+        self.dueDate = dueDate
+        self.daysUntil = daysUntil
+        self.isPaid = isPaid
+        self.isLate = isLate
+    }
 }
 
 struct OverviewSnapshot {
     /// How far ahead "Upcoming bills" looks.
     static let upcomingBillDays = 14
+    /// How far back "Upcoming bills" looks for bills that went unpaid.
+    static let lateBillDays = 7
 
     // MARK: Month
 
@@ -63,6 +77,12 @@ struct OverviewSnapshot {
 
     /// Sum of the budgets of expense categories that have one; 0 when there are none.
     let totalBudgetCents: Int
+    /// Net spending this month in the categories that have a budget: what
+    /// `totalBudgetCents` is measured against (as on the Budgets screen).
+    let budgetedSpentCents: Int
+    /// Cumulative spending in budgeted categories for each day of this month
+    /// through today; empty without budgets.
+    let budgetedDaily: [DailyTotal]
     /// Every budgeted category, most used first.
     let budgetLines: [OverviewBudgetLine]
     /// The biggest spending categories this month, up to four.
@@ -71,7 +91,8 @@ struct OverviewSnapshot {
     // MARK: Bills
 
     let hasRecurringItems: Bool
-    /// Active bills due within `upcomingBillDays`, soonest first, up to four.
+    /// Active bills that are overdue (from the last `lateBillDays`) or due
+    /// within `upcomingBillDays`, soonest (so overdue ones) first, up to four.
     let upcomingBills: [OverviewUpcomingBill]
 
     // MARK: Net worth
@@ -86,6 +107,13 @@ struct OverviewSnapshot {
     // MARK: Derived
 
     var hasBudgets: Bool { totalBudgetCents > 0 }
+
+    /// Some of this month's spending is in categories without a budget (or
+    /// uncategorized), so the budgeted line differs from the total.
+    var hasUnbudgetedSpending: Bool { hasBudgets && budgetedDaily != thisMonthDaily }
+
+    /// This month's spending outside the budgeted categories.
+    var unbudgetedSpentCents: Int { spentCents - budgetedSpentCents }
 
     /// How much of the month has passed (0...1), for budget pace ticks.
     var monthFraction: Double {
@@ -145,6 +173,18 @@ struct OverviewSnapshot {
 
         let budgeted = categories.filter { $0.kind == .expense && $0.hasBudget }
         totalBudgetCents = budgeted.reduce(0) { $0 + ($1.monthlyBudgetCents ?? 0) }
+        budgetedSpentCents = budgeted.reduce(0) { $0 + (spentByCategory[$1.ledgerID] ?? 0) }
+        let budgetedIDs = Set(budgeted.map { $0.ledgerID })
+        if budgetedIDs.isEmpty {
+            budgetedDaily = []
+        } else {
+            let budgetedEntries = recent.filter { entry in
+                guard let categoryID = entry.ledgerCategoryID else { return false }
+                return budgetedIDs.contains(categoryID)
+            }
+            budgetedDaily = SpendingAnalytics.cumulativeDailySpending(
+                budgetedEntries, month: month, throughDay: today, calendar: calendar)
+        }
         budgetLines = budgeted
             .map { category in
                 OverviewBudgetLine(
@@ -171,13 +211,26 @@ struct OverviewSnapshot {
                 )
             }
 
-        // Bills: a charge up to a week before the due date can already pay it.
+        // Bills: a charge up to a week either side of a due date can pay it,
+        // so look a week further back than the oldest overdue date.
         hasRecurringItems = !recurringItems.isEmpty
         let todayStart = calendar.startOfDay(for: now)
-        let matchStart = calendar.date(byAdding: .day, value: -10, to: todayStart) ?? todayStart
+        let lateStart = calendar.date(byAdding: .day, value: -Self.lateBillDays, to: todayStart) ?? todayStart
+        let matchStart = calendar.date(byAdding: .day, value: -(Self.lateBillDays + 7), to: todayStart) ?? todayStart
         let matchEntries = transactions.filter { $0.date >= matchStart }
         var bills: [OverviewUpcomingBill] = []
         for item in recurringItems where item.isActive {
+            // Recent due dates that passed without a matching charge.
+            let pastDue = item.schedule.occurrences(in: DateInterval(start: lateStart, end: todayStart), calendar: calendar)
+            for due in pastDue {
+                let status = RecurringMatcher.status(
+                    dueDate: due, merchantKey: item.merchantKey, frequency: item.frequency,
+                    entries: matchEntries, now: now, calendar: calendar)
+                guard case .late = status else { continue }
+                bills.append(OverviewUpcomingBill(
+                    item: item, dueDate: due, daysUntil: calendar.daysBetween(now, due), isPaid: false, isLate: true))
+            }
+
             let due = item.nextDueDate(onOrAfter: now, calendar: calendar)
             let daysUntil = calendar.daysBetween(now, due)
             guard daysUntil >= 0, daysUntil <= Self.upcomingBillDays else { continue }
@@ -191,7 +244,7 @@ struct OverviewSnapshot {
             case .upcoming, .late:
                 isPaid = false
             }
-            bills.append(OverviewUpcomingBill(id: item.id, item: item, dueDate: due, daysUntil: daysUntil, isPaid: isPaid))
+            bills.append(OverviewUpcomingBill(item: item, dueDate: due, daysUntil: daysUntil, isPaid: isPaid, isLate: false))
         }
         bills.sort { lhs, rhs in
             if lhs.dueDate != rhs.dueDate { return lhs.dueDate < rhs.dueDate }

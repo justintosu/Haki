@@ -7,6 +7,7 @@
 //  follow" suggestions shown on an empty Following feed.
 //
 
+import CoreGraphics
 import Foundation
 import SwiftUI
 
@@ -187,6 +188,12 @@ struct FeedSuggestionsView: View {
         profiles.contains(where: \.followedByMe)
     }
 
+    /// The suggestions, without people you blocked.
+    private var visibleProfiles: [UserProfile] {
+        let blockList = SocialBlockList.shared
+        return profiles.filter { !blockList.isBlocked($0.id) }
+    }
+
     private var intro: some View {
         VStack(spacing: 10) {
             Image(systemName: "person.2.fill")
@@ -230,14 +237,14 @@ struct FeedSuggestionsView: View {
                 .font(.subheadline.weight(.semibold))
             }
         case .loaded:
-            if !profiles.isEmpty {
+            if !visibleProfiles.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Suggested for you")
                         .font(.headline)
                         .accessibilityAddTraits(.isHeader)
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 12) {
-                            ForEach(profiles) { profile in
+                        LazyHStack(alignment: .top, spacing: 12) {
+                            ForEach(visibleProfiles) { profile in
                                 FeedSuggestedProfileCard(
                                     profile: profile,
                                     isUpdating: pendingIDs.contains(profile.id),
@@ -303,6 +310,9 @@ struct FeedSuggestedProfileCard: View {
     let isUpdating: Bool
     let onToggleFollow: () -> Void
 
+    /// Grows with the text size, so names and the button label aren't cut off.
+    @ScaledMetric(relativeTo: .subheadline) private var cardWidth: CGFloat = 164
+
     var body: some View {
         VStack(spacing: 12) {
             NavigationLink {
@@ -314,16 +324,17 @@ struct FeedSuggestedProfileCard: View {
                     Text(profile.name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     Text("@" + profile.username)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     Text(followersText)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
             }
@@ -336,7 +347,7 @@ struct FeedSuggestedProfileCard: View {
                 .disabled(isUpdating)
         }
         .padding(14)
-        .frame(width: 164)
+        .frame(width: min(cardWidth, 300))
         .background(Color.hakiCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 

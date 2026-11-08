@@ -55,6 +55,12 @@ struct BudgetsSnapshot {
     /// the current month, the whole month otherwise.
     let budgetedDaily: [DailyTotal]
 
+    /// Expected month-end spending in budgeted categories. For the current
+    /// month the rest of the month is predicted from last month's same days
+    /// (`SpendingAnalytics.projectedSpending`), so rent paid on the 1st isn't
+    /// extrapolated as if it repeated daily. Other months: what was spent.
+    let projectedCents: Int
+
     /// The category to offer when the user has no budgets yet: the biggest
     /// unbudgeted spender this month, else the first spending category.
     let suggestedCategory: TransactionCategory?
@@ -121,6 +127,23 @@ struct BudgetsSnapshot {
             return budgetedIDs.contains(categoryID)
         }
 
+        // The projection needs last month too, so it can't use `entries`
+        // (this month only).
+        var projected = budgeted.reduce(0) { $0 + $1.cents }
+        if isCurrent {
+            let projectionStart = month.previous.start(in: calendar)
+            let projectionEntries = transactions.filter { transaction in
+                guard transaction.ledgerDate >= projectionStart, transaction.ledgerDate < interval.end,
+                      let categoryID = transaction.ledgerCategoryID
+                else { return false }
+                return budgetedIDs.contains(categoryID)
+            }
+            let estimate = SpendingAnalytics.projectedSpending(
+                projectionEntries, month: month, asOf: now, calendar: calendar)
+            // Never project less than what's already been spent this month.
+            projected = max(projected, estimate)
+        }
+
         var suggestion: TransactionCategory? = unbudgeted.first?.category
         if suggestion == nil {
             suggestion = categories.first { $0.kind == .expense && !$0.hasBudget }
@@ -148,6 +171,7 @@ struct BudgetsSnapshot {
             throughDay: isCurrent ? elapsed : nil,
             calendar: calendar
         )
+        self.projectedCents = projected
         self.suggestedCategory = suggestion
     }
 
@@ -170,12 +194,16 @@ struct BudgetsSnapshot {
         return Double(elapsedDays) / Double(daysInMonth)
     }
 
+    /// `BudgetProgress.pace`, except that spending ahead of an even pace
+    /// isn't flagged while the month-end projection stays within budget: a
+    /// big bill early in the month (rent on the 1st) is ahead of an even pace
+    /// for weeks without the month going over.
     var pace: BudgetPace {
-        overall.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
-    }
-
-    var projectedCents: Int {
-        overall.projectedCents(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
+        let straightLine = overall.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
+        if straightLine == .aheadOfPace, isCurrentMonth, projectedCents <= totalBudgetCents {
+            return .onTrack
+        }
+        return straightLine
     }
 
     /// Spending outside budgets: unbudgeted categories plus uncategorized.
