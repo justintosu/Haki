@@ -4,7 +4,9 @@ The app talks to the Supabase project **haki** (`https://bixzpnxadghxuvgckksx.su
 database schema, storage buckets and server functions are already deployed. A few settings need
 credentials that only you can create, in dashboards only you can sign in to. Until they're done:
 
-- email sign-up works (with Supabase's default, rate-limited email sender),
+- email sign-up works only for the email addresses of your Supabase organization's team members:
+  Supabase's built-in sender refuses other addresses ("Email address not authorized") and sends just
+  a few emails an hour,
 - "Continue with Google" and "Sign in with Apple" show an error,
 - "Connect a brokerage" says brokerage connections aren't set up yet.
 
@@ -53,11 +55,15 @@ Email confirmations, password resets and Google sign-in all return to the app th
 > for a device, either join the Apple Developer Program or remove the key from
 > `Config/Haki.entitlements` for local testing. The Simulator works either way.
 
-## 4. Email sign-in (optional tuning)
+## 4. Email sign-up for everyone (needs an email provider)
 
 Email/password is on by default, with **Confirm email** enabled. Supabase's built-in email sender
-only allows a few messages per hour. Before real users sign up, set up a custom SMTP provider under
-**Authentication → Emails → SMTP Settings**, and edit the templates if you like.
+only delivers to the addresses of your Supabase organization's team members, and only a few
+messages per hour. Everyone else gets "Email address not authorized" and can't confirm their
+account. Before anyone else signs up with email, set up a custom SMTP provider (for example Resend,
+Postmark or Amazon SES) under **Authentication → Emails → SMTP Settings**, then raise the email rate
+limit under **Authentication → Rate Limits**. Don't turn off **Confirm email** to work around this:
+it would let anyone sign up with an address they don't own.
 
 ## 5. Brokerage connections with Plaid (about 5 minutes for Sandbox)
 
@@ -94,4 +100,6 @@ function will pass it to Plaid.
   The server stores profiles, posts and brokerage holdings. Other users only ever see your
   portfolio as **percentages**, and only while *Share portfolio percentages* is on.
 - **Account deletion** (required by the App Store) is in **Profile → Settings → Delete account**. It
-  removes the account, posts, images and brokerage connections from the server.
+  removes the account, posts, images and brokerage connections from the server. Public images can
+  stay in the storage CDN's cache for up to an hour after they're deleted. Their URLs contain random
+  IDs, so they can't be guessed.
