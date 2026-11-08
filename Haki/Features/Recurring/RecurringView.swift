@@ -54,30 +54,28 @@ struct RecurringView: View {
             dismissedKeys: Set(dismissedKeys),
             now: now
         )
-        NavigationStack {
-            content(for: model)
-                .navigationTitle("Recurring")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            editorTarget = .new
-                        } label: {
-                            Label("Add bill", systemImage: "plus")
-                        }
-                        .accessibilityLabel("Add recurring bill")
+        content(for: model)
+            .navigationTitle("Recurring")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        editorTarget = .new
+                    } label: {
+                        Label("Add bill", systemImage: "plus")
                     }
+                    .accessibilityLabel("Add recurring bill")
                 }
-        }
-        .sheet(item: $editorTarget) { target in
-            editor(for: target)
-        }
-        .sensoryFeedback(.success, trigger: addedSuggestions)
-        .onAppear {
-            now = .now
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { now = .now }
-        }
+            }
+            .sheet(item: $editorTarget) { target in
+                editor(for: target)
+            }
+            .sensoryFeedback(.success, trigger: addedSuggestions)
+            .onAppear {
+                now = .now
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { now = .now }
+            }
     }
 
     // MARK: Content
@@ -623,11 +621,11 @@ private struct RecurringSuggestionRow: View {
 }
 
 #Preview {
-    RecurringView()
+    NavigationStack { RecurringView() }
         .previewEnvironment()
 }
 
 #Preview("Empty") {
-    RecurringView()
+    NavigationStack { RecurringView() }
         .previewEnvironment(empty: true)
 }

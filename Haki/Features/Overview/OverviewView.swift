@@ -2,9 +2,10 @@
 //  OverviewView.swift
 //  Haki
 //
-//  The home dashboard for the current month: spending against last month,
-//  the review queue, budgets, upcoming bills, net worth and cash flow. A
-//  brand-new user gets a welcome card with three ways to start instead.
+//  The Home tab: the current month's spending against last month, the
+//  review queue, budgets, upcoming bills, net worth, investments and cash
+//  flow, with shortcuts to Budgets, Recurring and Accounts. A brand-new user
+//  gets a welcome card with three ways to start instead.
 //
 
 import Foundation
@@ -40,6 +41,9 @@ struct OverviewView: View {
         NavigationStack {
             content
                 .navigationTitle("Overview")
+                .navigationDestination(item: homeDestination) { destination in
+                    homeScreen(for: destination)
+                }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -100,6 +104,7 @@ struct OverviewView: View {
     private func dashboard(snapshot: OverviewSnapshot) -> some View {
         ScrollView {
             VStack(spacing: 16) {
+                OverviewShortcutsRow()
                 if transactions.isEmpty {
                     noTransactionsCard
                 } else {
@@ -111,6 +116,7 @@ struct OverviewView: View {
                     OverviewUpcomingBillsCard(bills: snapshot.upcomingBills)
                 }
                 OverviewNetWorthCard(snapshot: snapshot, onAddAccount: { activeSheet = .addAccount })
+                OverviewInvestingCard()
                 if !transactions.isEmpty {
                     OverviewCashFlowCard(incomeCents: snapshot.incomeCents, spendingCents: snapshot.spentCents)
                 }
@@ -150,11 +156,38 @@ struct OverviewView: View {
         case .csvImport:
             NavigationStack {
                 CSVImportView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { activeSheet = nil }
+                        }
+                    }
             }
         case .addAccount:
             AccountEditorView(account: nil)
         case .addTransaction:
             TransactionEditorView()
+        }
+    }
+
+    // MARK: Home destinations
+
+    /// Budgets, Recurring and Accounts open on top of Overview (see `AppRouter.showHome`).
+    private var homeDestination: Binding<HomeDestination?> {
+        Binding(
+            get: { router.homeDestination },
+            set: { router.homeDestination = $0 }
+        )
+    }
+
+    @ViewBuilder
+    private func homeScreen(for destination: HomeDestination) -> some View {
+        switch destination {
+        case .budgets:
+            BudgetsView()
+        case .recurring:
+            RecurringView()
+        case .accounts:
+            AccountsView()
         }
     }
 

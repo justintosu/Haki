@@ -1450,29 +1450,14 @@ async function syncConnection(
 
 /**
  * Upserts today's (UTC) portfolio snapshot from the user's stored holdings.
- * With no brokerage connections left, today's snapshot is removed instead.
+ * With no holdings stored (no connections left, or none has synced data),
+ * today's snapshot is removed instead, so the chart never shows a fake 0.
  */
 async function refreshSnapshot(
   admin: AdminClient,
   userId: string,
 ): Promise<void> {
   const date = utcDate(new Date());
-  const { count, error } = await admin
-    .from("brokerage_connections")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
-  if (error) throw dbFailure("counting brokerage connections", error);
-
-  if (!count) {
-    const { error: deleteError } = await admin
-      .from("portfolio_snapshots")
-      .delete()
-      .eq("user_id", userId)
-      .eq("date", date);
-    if (deleteError) throw dbFailure("clearing today's snapshot", deleteError);
-    return;
-  }
-
   const holdings = await selectAll<{ value: unknown; cost_basis: unknown }>(
     "reading holdings for the snapshot",
     (from, to) =>
@@ -1483,6 +1468,17 @@ async function refreshSnapshot(
         .order("id")
         .range(from, to),
   );
+
+  if (holdings.length === 0) {
+    const { error } = await admin
+      .from("portfolio_snapshots")
+      .delete()
+      .eq("user_id", userId)
+      .eq("date", date);
+    if (error) throw dbFailure("clearing today's snapshot", error);
+    return;
+  }
+
   let totalValue = 0;
   let costBasis = 0;
   let hasCostBasis = false;

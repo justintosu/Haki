@@ -24,26 +24,24 @@ struct AccountsView: View {
     init() {}
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Accounts")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showsNewAccount = true
-                        } label: {
-                            Label("Add Account", systemImage: "plus")
-                        }
+        content
+            .navigationTitle("Accounts")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsNewAccount = true
+                    } label: {
+                        Label("Add Account", systemImage: "plus")
                     }
                 }
-                .sheet(isPresented: $showsNewAccount) {
-                    AccountEditorView(account: nil)
-                }
-                .sheet(item: $balanceTarget) { account in
-                    AccountBalanceUpdateView(account: account, onSave: { savedCount += 1 })
-                }
-                .sensoryFeedback(.success, trigger: savedCount)
-        }
+            }
+            .sheet(isPresented: $showsNewAccount) {
+                AccountEditorView(account: nil)
+            }
+            .sheet(item: $balanceTarget) { account in
+                AccountBalanceUpdateView(account: account, onSave: { savedCount += 1 })
+            }
+            .sensoryFeedback(.success, trigger: savedCount)
     }
 
     @ViewBuilder
@@ -276,11 +274,11 @@ private struct AccountsRow: View {
 }
 
 #Preview("Accounts") {
-    AccountsView()
+    NavigationStack { AccountsView() }
         .previewEnvironment()
 }
 
 #Preview("Empty") {
-    AccountsView()
+    NavigationStack { AccountsView() }
         .previewEnvironment(empty: true)
 }

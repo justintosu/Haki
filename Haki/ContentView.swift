@@ -9,7 +9,8 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-/// The tab bar. Each tab's root view owns its own `NavigationStack`.
+/// The tab bar shown once signed in. Each tab's root view owns its own
+/// `NavigationStack`. Budgets, Recurring and Accounts open from Home.
 struct RootView: View {
     @State private var router = AppRouter()
 
@@ -18,7 +19,7 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $router.selectedTab) {
-            Tab("Overview", systemImage: "square.grid.2x2", value: AppRouter.Tab.overview) {
+            Tab("Home", systemImage: "house", value: AppRouter.Tab.home) {
                 OverviewView()
             }
             Tab("Transactions", systemImage: "list.bullet.rectangle.portrait", value: AppRouter.Tab.transactions) {
@@ -26,14 +27,14 @@ struct RootView: View {
             }
             .badge(unreviewed.count)
 
-            Tab("Budgets", systemImage: "chart.bar.xaxis", value: AppRouter.Tab.budgets) {
-                BudgetsView()
+            Tab("Feed", systemImage: "rectangle.stack", value: AppRouter.Tab.feed) {
+                FeedView()
             }
-            Tab("Recurring", systemImage: "arrow.triangle.2.circlepath", value: AppRouter.Tab.recurring) {
-                RecurringView()
+            Tab("Invest", systemImage: "chart.line.uptrend.xyaxis", value: AppRouter.Tab.invest) {
+                InvestView()
             }
-            Tab("Accounts", systemImage: "building.columns", value: AppRouter.Tab.accounts) {
-                AccountsView()
+            Tab("Profile", systemImage: "person.crop.circle", value: AppRouter.Tab.profile) {
+                MyProfileView()
             }
         }
         .environment(router)

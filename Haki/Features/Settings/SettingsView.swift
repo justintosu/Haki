@@ -2,8 +2,9 @@
 //  SettingsView.swift
 //  Haki
 //
-//  The Settings sheet (presented from Overview's toolbar): import and manage
-//  data, organize categories and merchant rules, and read about the app.
+//  The Settings sheet (presented from Home and Profile): your account and
+//  privacy, importing and managing money data, categories and merchant
+//  rules, and about the app.
 //
 
 import Foundation
@@ -33,6 +34,7 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 profileSection
+                AccountSettingsSection()
                 dataSection
                 organizeSection
                 aboutSection
@@ -164,14 +166,14 @@ struct SettingsView: View {
 
             SettingsNoteRow(
                 title: "Private by design",
-                message: "Everything you add to Haki — accounts, transactions, budgets and bills — is stored only on this device.",
+                message: "Your money data — accounts, transactions, budgets and bills — stays on this device. Your profile, posts and connected brokerage holdings are saved to your Haki account. Other people only ever see your portfolio as percentages, and only if you share it.",
                 systemImage: "lock.fill",
                 tint: .blue
             )
 
             SettingsNoteRow(
-                title: "Bank connections",
-                message: "Automatic bank connections aren't available yet. Export a CSV from your bank and use Import from CSV to bring your transactions in.",
+                title: "Connections",
+                message: "Connect a brokerage read-only from the Invest tab. Automatic bank transaction sync isn't available yet, so export a CSV from your bank and use Import from CSV.",
                 systemImage: "building.columns.fill",
                 tint: .teal
             )

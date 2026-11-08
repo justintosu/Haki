@@ -69,9 +69,13 @@ enum PreviewData {
 }
 
 extension View {
-    /// Sample database plus the environment objects the app provides.
+    /// Sample database plus the environment objects the app provides. The
+    /// services run in preview mode: sample data, no network.
     func previewEnvironment(empty: Bool = false) -> some View {
         modelContainer(empty ? PreviewData.emptyContainer : PreviewData.container)
             .environment(AppRouter())
+            .environment(AuthService.preview)
+            .environment(SocialService.preview)
+            .environment(PortfolioService.preview)
     }
 }

@@ -3,7 +3,7 @@
 //  Haki
 //
 //  Current net worth, its change over the last month and a three-month
-//  sparkline. Tapping opens the Accounts tab.
+//  sparkline. Tapping opens Accounts.
 //
 
 import Charts
@@ -20,7 +20,7 @@ struct OverviewNetWorthCard: View {
     var body: some View {
         if snapshot.hasAccounts {
             Button {
-                router.selectedTab = .accounts
+                router.showHome(.accounts)
             } label: {
                 summary
             }

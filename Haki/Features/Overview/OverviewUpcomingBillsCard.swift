@@ -17,7 +17,7 @@ struct OverviewUpcomingBillsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             CardHeader("Upcoming bills", systemImage: "calendar", actionTitle: "See all") {
-                router.selectedTab = .recurring
+                router.showHome(.recurring)
             }
             if bills.isEmpty {
                 Text("Nothing due in the next two weeks.")

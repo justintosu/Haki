@@ -23,23 +23,21 @@ struct BudgetsView: View {
     @State private var editorTarget: BudgetsEditorTarget? = nil
 
     var body: some View {
-        NavigationStack {
-            content(snapshot)
-                .navigationTitle("Budgets")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            editorTarget = .new
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("New category")
+        content(snapshot)
+            .navigationTitle("Budgets")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        editorTarget = .new
+                    } label: {
+                        Image(systemName: "plus")
                     }
+                    .accessibilityLabel("New category")
                 }
-                .sheet(item: $editorTarget) { target in
-                    CategoryEditorView(category: target.category)
-                }
-        }
+            }
+            .sheet(item: $editorTarget) { target in
+                CategoryEditorView(category: target.category)
+            }
     }
 
     private var snapshot: BudgetsSnapshot {
@@ -385,11 +383,11 @@ private struct BudgetsSectionHeader: View {
 }
 
 #Preview("Budgets") {
-    BudgetsView()
+    NavigationStack { BudgetsView() }
         .previewEnvironment()
 }
 
 #Preview("No budgets") {
-    BudgetsView()
+    NavigationStack { BudgetsView() }
         .previewEnvironment(empty: true)
 }

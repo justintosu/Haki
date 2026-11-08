@@ -31,7 +31,7 @@ struct OverviewBudgetsCard: View {
     }
 
     private func showBudgets() {
-        router.selectedTab = .budgets
+        router.showHome(.budgets)
     }
 
     // MARK: Budgets

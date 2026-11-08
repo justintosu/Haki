@@ -13,6 +13,10 @@ import SwiftUI
 struct HakiApp: App {
     private let container: ModelContainer
 
+    @State private var auth = AuthService.live
+    @State private var social = SocialService.live
+    @State private var portfolio = PortfolioService.live
+
     init() {
         do {
             container = try HakiSchema.makeContainer()
@@ -24,7 +28,17 @@ struct HakiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            // Sign-in gate: welcome → onboarding → the tab bar (RootView).
+            AuthGateView()
+                .environment(auth)
+                .environment(social)
+                .environment(portfolio)
+                .onChange(of: auth.state) { _, state in
+                    // Brokerage data belongs to the account, so drop it on sign-out.
+                    if state == .signedOut {
+                        portfolio.reset()
+                    }
+                }
         }
         .modelContainer(container)
     }
