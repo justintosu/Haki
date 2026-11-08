@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager and scripts/test-core.sh
+.build/
+.swiftpm/
+
+# Editors
+.vscode/
+.idea/
