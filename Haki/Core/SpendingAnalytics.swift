@@ -131,6 +131,31 @@ nonisolated enum SpendingAnalytics {
         }
     }
 
+    /// Expected net spending for the whole month, given what's been spent so far.
+    ///
+    /// The rest of the month is predicted from last month's spending over the
+    /// same remaining days, so fixed bills early in the month (rent on the 1st)
+    /// aren't extrapolated as if they repeated daily. Falls back to a straight
+    /// line when last month has no spending.
+    static func projectedSpending<E: LedgerEntry>(
+        _ entries: [E],
+        month: MonthInterval,
+        asOf now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Int {
+        let days = month.numberOfDays(in: calendar)
+        let elapsed = month.elapsedDays(asOf: now, calendar: calendar)
+        let spentSoFar = cumulativeDailySpending(entries, month: month, throughDay: elapsed, calendar: calendar).last?.cents ?? 0
+        guard elapsed < days else { return spentSoFar }
+
+        let previous = cumulativeDailySpending(entries, month: month.previous, calendar: calendar)
+        if let previousTotal = previous.last?.cents, previousTotal > 0 {
+            let previousThroughToday = elapsed > 0 ? previous[min(elapsed, previous.count) - 1].cents : 0
+            return spentSoFar + max(0, previousTotal - previousThroughToday)
+        }
+        return BudgetProgress(budgetCents: 0, spentCents: spentSoFar).projectedCents(elapsedDays: elapsed, daysInMonth: days)
+    }
+
     /// Average of `monthlyTotals` over months that have any activity. Returns 0 if none.
     static func averageMonthlySpending<E: LedgerEntry>(
         _ entries: [E],
@@ -175,8 +200,10 @@ nonisolated struct BudgetProgress: Hashable {
         if isOverBudget { return .overBudget }
         guard daysInMonth > 0, budgetCents > 0 else { return .onTrack }
         let evenPace = Double(budgetCents) * Double(min(elapsedDays, daysInMonth)) / Double(daysInMonth)
-        // 10% leeway so a single early purchase doesn't flag the whole month.
-        return Double(spentCents) > evenPace * 1.1 ? .aheadOfPace : .onTrack
+        // 10% leeway, and nothing is flagged until half the budget is used, so a
+        // single early purchase doesn't flag the whole month. `BudgetBar` uses
+        // the same thresholds for its warning color.
+        return Double(spentCents) > evenPace * 1.1 && fractionUsed >= 0.5 ? .aheadOfPace : .onTrack
     }
 
     /// Month-end spending if the current daily rate continues.

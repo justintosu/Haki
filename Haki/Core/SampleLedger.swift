@@ -219,7 +219,8 @@ nonisolated struct SampleLedger: Hashable {
         for account in accounts {
             let trend = trends[account.key] ?? (0, 0)
             for weeksAgo in stride(from: 52, through: 0, by: -1) {
-                guard let date = calendar.date(byAdding: .day, value: -7 * weeksAgo, to: today) else { continue }
+                // Dated from `now`, not noon, so the newest snapshot is never in the future.
+                guard let date = calendar.date(byAdding: .day, value: -7 * weeksAgo, to: now) else { continue }
                 let noise = trend.noise == 0 || weeksAgo == 0 ? 0 : random(-trend.noise...trend.noise)
                 let value = max(0, account.balanceCents - trend.weekly * weeksAgo + noise)
                 balances.append(BalanceSpec(accountKey: account.key, date: date, balanceCents: value))

@@ -173,13 +173,32 @@ suite("SpendingAnalytics totals") {
     expectEqual(SpendingAnalytics.averageMonthlySpending(entries, months: months, calendar: testCalendar), 10_666)
 }
 
+suite("SpendingAnalytics.projectedSpending") {
+    // Last month: $2,000 rent on the 1st, then $10 a day.
+    var entries: [Entry] = [Entry(ledgerDate: day(2026, 10, 1), ledgerAmountCents: 200_000)]
+    for d in 1...31 { entries.append(Entry(ledgerDate: day(2026, 10, d), ledgerAmountCents: 1_000)) }
+    // This month so far: rent again, then $20 a day for 8 days.
+    entries.append(Entry(ledgerDate: day(2026, 11, 1), ledgerAmountCents: 200_000))
+    for d in 1...8 { entries.append(Entry(ledgerDate: day(2026, 11, d), ledgerAmountCents: 2_000)) }
+    let november = MonthInterval(year: 2026, month: 11)
+    let projected = SpendingAnalytics.projectedSpending(entries, month: november, asOf: day(2026, 11, 8), calendar: testCalendar)
+    // Spent 216,000 so far; last month's days 9...31 added 23 × 1,000.
+    expectEqual(projected, 216_000 + 23_000, "rent isn't extrapolated")
+    expectEqual(SpendingAnalytics.projectedSpending(entries, month: november.previous, asOf: day(2026, 11, 8), calendar: testCalendar),
+                231_000, "past months return their total")
+    let noHistory = entries.filter { $0.ledgerDate >= day(2026, 11, 1) }
+    expectEqual(SpendingAnalytics.projectedSpending(noHistory, month: november, asOf: day(2026, 11, 8), calendar: testCalendar),
+                810_000, "falls back to a straight line")
+}
+
 suite("BudgetProgress") {
     let progress = BudgetProgress(budgetCents: 30_000, spentCents: 12_000)
     expectEqual(progress.remainingCents, 18_000)
     expect(!progress.isOverBudget)
     expectEqual(progress.fractionUsed, 0.4)
     expectEqual(progress.pace(elapsedDays: 15, daysInMonth: 30), .onTrack)
-    expectEqual(progress.pace(elapsedDays: 5, daysInMonth: 30), .aheadOfPace)
+    expectEqual(progress.pace(elapsedDays: 5, daysInMonth: 30), .onTrack, "under half the budget is never flagged")
+    expectEqual(BudgetProgress(budgetCents: 30_000, spentCents: 18_000).pace(elapsedDays: 10, daysInMonth: 30), .aheadOfPace)
     expectEqual(progress.projectedCents(elapsedDays: 10, daysInMonth: 30), 36_000)
     expectEqual(progress.projectedCents(elapsedDays: 0, daysInMonth: 30), 12_000)
 

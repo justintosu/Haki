@@ -104,7 +104,7 @@ nonisolated enum CSVParser {
 nonisolated enum AmountSignConvention: String, CaseIterable, Identifiable, Hashable {
     /// Bank-statement style: purchases are negative, deposits positive.
     case negativeIsMoneyOut
-    /// Plaid / Copilot / Mint style: purchases are positive.
+    /// Aggregator-export style: purchases are positive (Haki's own convention).
     case positiveIsMoneyOut
 
     var id: String { rawValue }
