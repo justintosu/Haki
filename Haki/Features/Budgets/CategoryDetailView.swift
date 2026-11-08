@@ -8,6 +8,7 @@
 //
 
 import Charts
+import CoreGraphics
 import Foundation
 import SwiftData
 import SwiftUI
@@ -476,14 +477,14 @@ private struct CategoryHistoryChart: View {
         Chart {
             ForEach(totals) { total in
                 BarMark(
-                    x: .value("Month", total.month.shortTitle()),
+                    x: .value("Month", monthLabel(total)),
                     y: .value("Amount", dollars(total.cents))
                 )
-                .foregroundStyle(total.month == selectedMonth ? tint : tint.opacity(0.35))
+                .foregroundStyle(barColor(total))
                 .cornerRadius(6)
                 .annotation(position: .top) {
                     // Only the displayed month is labeled with its amount.
-                    Text(total.month == selectedMonth ? Money.compact(total.cents) : "")
+                    Text(barLabel(total))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
@@ -520,6 +521,21 @@ private struct CategoryHistoryChart: View {
 
     private func dollars(_ cents: Int) -> Double {
         Double(cents) / 100
+    }
+
+    private func monthLabel(_ total: MonthTotal) -> String {
+        total.month.shortTitle()
+    }
+
+    /// The displayed month is solid; the others are faded.
+    private func barColor(_ total: MonthTotal) -> Color {
+        let isSelected: Bool = total.month == selectedMonth
+        return isSelected ? tint : tint.opacity(0.35)
+    }
+
+    private func barLabel(_ total: MonthTotal) -> String {
+        let isSelected: Bool = total.month == selectedMonth
+        return isSelected ? Money.compact(total.cents) : ""
     }
 
     private func yLabel(_ value: AxisValue) -> String {

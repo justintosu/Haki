@@ -111,6 +111,7 @@ struct RecurringEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
+                        deletesOnDisappear = false
                         dismiss()
                     }
                 }
@@ -365,6 +366,7 @@ struct RecurringEditorView: View {
 
     private func save() {
         guard let cents = parsedCents, cents > 0, !trimmedName.isEmpty else { return }
+        deletesOnDisappear = false
         let calendar = Calendar.current
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 

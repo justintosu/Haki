@@ -250,7 +250,11 @@ private struct RecurringSummaryCard: View {
     let model: RecurringScreenModel
 
     /// Grows with Dynamic Type so the percentage inside stays legible.
-    @ScaledMetric(relativeTo: .body) var ringSize: CGFloat = 80
+    @ScaledMetric(relativeTo: .body) private var ringSize: CGFloat = 80
+
+    init(model: RecurringScreenModel) {
+        self.model = model
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

@@ -8,6 +8,7 @@
 //
 
 import Charts
+import CoreGraphics
 import Foundation
 import SwiftData
 import SwiftUI
