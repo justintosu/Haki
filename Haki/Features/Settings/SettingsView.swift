@@ -251,7 +251,7 @@ struct SettingsView: View {
         if !recurringItems.isEmpty { parts.append(SettingsFormat.count(recurringItems.count, "bill", "bills")) }
         if !rules.isEmpty { parts.append(SettingsFormat.count(rules.count, "rule", "rules")) }
 
-        let reset = "Your categories go back to the built-in set. This can't be undone."
+        let reset = "Your food log and workouts on this device are deleted too, and your categories go back to the built-in set. This can't be undone."
         guard !parts.isEmpty else { return reset }
         let list: String
         if parts.count == 1 {
@@ -291,7 +291,11 @@ struct SettingsView: View {
     private func eraseAllData() {
         withAnimation(.snappy) {
             LedgerStore.eraseAllData(in: modelContext)
+            FoodStore.eraseAll(in: modelContext)
+            WorkoutStore.eraseAll(in: modelContext)
         }
+        // Copied Hevy workouts were erased too; the next sync fetches them again from the start.
+        UserDefaults.standard.removeObject(forKey: HealthSettings.hevyLastSyncKey)
         refreshTransactionCount()
         dismissedRecurringSuggestions = ""
         statusMessage = "All data erased. The built-in categories were restored."

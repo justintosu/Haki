@@ -8,7 +8,8 @@ credentials that only you can create, in dashboards only you can sign in to. Unt
   Supabase's built-in sender refuses other addresses ("Email address not authorized") and sends just
   a few emails an hour,
 - "Continue with Google" and "Sign in with Apple" show an error,
-- "Connect a brokerage" says brokerage connections aren't set up yet.
+- "Connect a brokerage" says brokerage connections aren't set up yet,
+- the Health tab's meal photo estimates and restaurant menus say AI food features aren't set up yet.
 
 ## 1. Allow the app's redirect URL (2 minutes)
 
@@ -92,11 +93,49 @@ switch `PLAID_SECRET` to the Production secret and `PLAID_ENV` to `production`. 
 how to register a redirect URI. Set it as the optional `PLAID_REDIRECT_URI` secret and the server
 function will pass it to Plaid.
 
+## 6. AI food features with Claude (about 5 minutes)
+
+Meal estimates and menu lookups run in the `food-ai` Edge Function, which calls the Anthropic API.
+
+1. [Claude Console](https://platform.claude.com/) → **API keys** → create a key (add billing
+   first; there's no free tier for the API).
+2. Supabase Dashboard → **Edge Functions → Secrets** → add `ANTHROPIC_API_KEY` with that key, or:
+
+   ```sh
+   supabase secrets set --project-ref bixzpnxadghxuvgckksx ANTHROPIC_API_KEY=sk-ant-...
+   ```
+3. Optional secrets:
+
+   | Name | Default | What it does |
+   |---|---|---|
+   | `FOOD_AI_MODEL` | `claude-opus-5-5` | The Claude model. `claude-sonnet-5-5` costs about half as much; `claude-haiku-5-5` is far cheaper but less accurate on photos and menus. |
+   | `FOOD_AI_DAILY_MEALS` | `50` | Meal estimates per person per day (UTC). |
+   | `FOOD_AI_DAILY_MENUS` | `15` | New menu lookups per person per day. Cached menus don't count. |
+
+**What it costs (rough, at Claude Opus 5.5's $4 per million input and $20 per million output
+tokens):** a meal estimate reads a photo and some instructions (about 2–4 thousand tokens) and
+writes 1–3 thousand, so around 3–7 cents. A menu lookup runs web searches (billed per search) and
+reads several pages, so expect roughly 10–30 cents — which is why menus are cached and shared for
+14 days. Watch real spend in the Claude Console; switching `FOOD_AI_MODEL` to Sonnet roughly halves it. If Claude declines a
+request, the function retries it once on Anthropic's recommended fallback model (server-side
+fallback) before telling the person.
+
+Restaurant menus come from public web pages and Claude's estimates, and the app labels them that
+way. For allergies, people should always check with the restaurant.
+
+## 7. Hevy (nothing to set up on the server)
+
+Each person connects their own Hevy account in **Health → Hevy** with an API key from
+[hevy.com → Settings → Developer](https://hevy.com/settings?developer) (needs Hevy Pro). The key is
+stored in the iPhone's Keychain and the app talks to Hevy directly. Haki isn't affiliated with Hevy.
+
 ## Good to know
 
 - **Free plan pausing:** Supabase pauses free projects after a week without activity. Restore it
   from the dashboard if the app suddenly can't sign in.
-- **Privacy model:** money data (transactions, budgets, accounts) stays on the device in SwiftData.
+- **Privacy model:** money data (transactions, budgets, accounts), the food log and workouts stay
+  on the device in SwiftData. Meal photos and descriptions are sent to the `food-ai` function and on
+  to Anthropic to be analyzed, and aren't stored by Haki.
   The server stores profiles, posts and brokerage holdings. Other users only ever see your
   portfolio as **percentages**, and only while *Share portfolio percentages* is on.
 - **Account deletion** (required by the App Store) is in **Profile → Settings → Delete account**. It
