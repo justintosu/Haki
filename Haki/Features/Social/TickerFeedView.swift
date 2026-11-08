@@ -181,7 +181,10 @@ struct TickerPositionCard: View {
     }
 
     private func held(_ position: PortfolioPosition) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        // Counts only the lots that report a cost basis, so lots without one
+        // don't show up as pure gain.
+        let costBasis = portfolio.costBases[position.symbol] ?? PositionCostBasis(position: position)
+        return VStack(alignment: .leading, spacing: 14) {
             CardHeader("Your position", systemImage: "checkmark.seal.fill")
             VStack(alignment: .leading, spacing: 2) {
                 Text(TickerMoney.format(position.value))
@@ -197,12 +200,12 @@ struct TickerPositionCard: View {
 
             HStack(alignment: .top, spacing: 12) {
                 stat("Return") {
-                    PercentChangeText(percent: position.gainPct)
+                    PercentChangeText(percent: costBasis.gainPct)
                 }
                 stat("Gain") {
-                    Text(gainText(position.gain))
+                    Text(gainText(costBasis.gain))
                         .monospacedDigit()
-                        .foregroundStyle(gainColor(position.gain))
+                        .foregroundStyle(gainColor(costBasis.gain))
                 }
                 stat("Weight") {
                     Text(weightText(position))

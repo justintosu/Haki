@@ -410,9 +410,8 @@ import Supabase
 // MARK: - Cost basis
 
 /// A position's cost and return counting only the holdings that report what
-/// was paid, as `PortfolioTotals` does. (`PortfolioPosition.gain` compares
-/// the whole position's value with that partial cost, so lots without a cost
-/// basis would count as pure gain.)
+/// was paid, as `PortfolioTotals` and `PortfolioPosition` do, with the
+/// holding-level detail (average cost, partial coverage) the screens show.
 nonisolated struct PositionCostBasis: Hashable {
     /// What was paid for the holdings that report it; `nil` when none does.
     let costBasis: Double?
@@ -451,12 +450,13 @@ nonisolated struct PositionCostBasis: Hashable {
         self.totalValue = totalValue
     }
 
-    /// When the holdings aren't known: the position's own (all-or-nothing) figures.
+    /// When the holdings aren't known: the position's own figures, which also
+    /// count only the holdings that report a cost basis.
     init(position: PortfolioPosition) {
         let hasCost = (position.costBasis ?? 0) > 0
         costBasis = hasCost ? position.costBasis : nil
-        quantity = hasCost ? position.quantity : 0
-        value = hasCost ? position.value : 0
+        quantity = hasCost ? position.quantityWithCostBasis : 0
+        value = hasCost ? position.valueWithCostBasis : 0
         totalQuantity = position.quantity
         totalValue = position.value
     }

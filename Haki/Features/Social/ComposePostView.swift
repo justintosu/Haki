@@ -316,7 +316,7 @@ struct ComposePostView: View {
             } header: {
                 Text("Preview")
             } footer: {
-                Text("Only percentages and your total return are shared — never amounts, share counts or account details. Your top 5 positions are shown; the rest are grouped as Other.")
+                Text("When you post, Haki fills in these percentages from your connected brokerage, so they always match what you hold. Only percentages and your total return are shared — never amounts, share counts or account details. Your top 5 positions are shown; the rest are grouped as Other.")
             }
         } else if portfolio.isLoading || (portfolio.lastLoaded == nil && portfolio.errorMessage == nil) {
             Section {
@@ -419,10 +419,12 @@ struct ComposePostView: View {
                 errorMessage = "Couldn't read that photo. Try another one."
                 return
             }
-            guard let jpeg = ImageUpload.jpegData(from: data, maxDimension: 1440, quality: 0.8) else {
+            guard let jpeg = await ImageUpload.makeJPEG(from: data, maxDimension: 1440, quality: 0.8) else {
                 errorMessage = "That file isn't a photo Haki can use."
                 return
             }
+            // The photo was removed (or replaced) while it was being prepared.
+            guard photoItem == item else { return }
             imageJPEG = jpeg
             previewImage = UIImage(data: jpeg)
         } catch {

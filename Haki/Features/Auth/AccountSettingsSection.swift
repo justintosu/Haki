@@ -200,7 +200,7 @@ struct AccountSettingsSection: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This permanently deletes your profile, posts, comments, follows and brokerage connections. It can't be undone. Budgets and transactions on this iPhone stay unless you erase them separately in Settings.")
+                Text("This permanently deletes your profile, posts, comments, follows and brokerage connections. It can't be undone. If you signed in with Apple, you'll confirm with Apple once more. Budgets and transactions on this iPhone stay unless you erase them separately in Settings.")
             }
             .authErrorAlert($deleteError, title: "Couldn't delete your account")
         } footer: {

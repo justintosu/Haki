@@ -681,6 +681,81 @@ suite("PortfolioMath") {
     expectEqual(AssetClass(plaidType: nil), .other)
 }
 
+suite("PortfolioMath partial cost basis") {
+    // Mixed lots: one with a cost basis, one without, one with a zero basis
+    // (which counts as unknown, as in `totals`).
+    let mixed = PortfolioMath.positions([
+        HoldingInput(ticker: "AAPL", name: "Apple", securityType: "equity", quantity: 10, value: 2_000, costBasis: 1_500),
+        HoldingInput(ticker: "AAPL", name: "Apple", securityType: "equity", quantity: 5, value: 1_000, costBasis: nil),
+        HoldingInput(ticker: "AAPL", name: "Apple", securityType: "equity", quantity: 2, value: 400, costBasis: 0),
+    ])
+    expectEqual(mixed.count, 1, "merged into one position")
+    if let position = mixed.first {
+        expectEqual(position.quantity, 17)
+        expectEqual(position.value, 3_400)
+        expectEqual(position.costBasis, 1_500)
+        expectEqual(position.valueWithCostBasis, 2_000)
+        expectEqual(position.quantityWithCostBasis, 10)
+        expectEqual(position.gain, 500, "lots without a cost basis aren't counted as gain")
+        expect(abs((position.gainPct ?? 0) - 33.333333) < 0.0001, "return on the lots with a cost basis")
+        expect(position.isCostBasisPartial)
+    }
+
+    // No lot reports a cost basis.
+    let unknown = PortfolioMath.positions([
+        HoldingInput(ticker: "VTI", name: "Vanguard Total", securityType: "etf", quantity: 3, value: 900, costBasis: nil),
+        HoldingInput(ticker: "VTI", name: "Vanguard Total", securityType: "etf", quantity: 1, value: 300, costBasis: 0),
+    ])
+    expectEqual(unknown.count, 1)
+    if let position = unknown.first {
+        expectEqual(position.value, 1_200)
+        expectEqual(position.costBasis, nil)
+        expectEqual(position.valueWithCostBasis, 0)
+        expectEqual(position.quantityWithCostBasis, 0)
+        expectEqual(position.gain, nil)
+        expectEqual(position.gainPct, nil)
+        expect(!position.isCostBasisPartial, "nothing to be partial about")
+    }
+
+    // Every lot reports a cost basis.
+    let known = PortfolioMath.positions([
+        HoldingInput(ticker: "MSFT", name: "Microsoft", securityType: "equity", quantity: 1, value: 400, costBasis: 300),
+        HoldingInput(ticker: "msft", name: "Microsoft", securityType: "equity", quantity: 2, value: 600, costBasis: 500),
+    ])
+    expectEqual(known.count, 1)
+    if let position = known.first {
+        expectEqual(position.quantity, 3)
+        expectEqual(position.value, 1_000)
+        expectEqual(position.costBasis, 800)
+        expectEqual(position.valueWithCostBasis, 1_000)
+        expectEqual(position.quantityWithCostBasis, 3)
+        expectEqual(position.gain, 200)
+        expectEqual(position.gainPct, 25)
+        expect(!position.isCostBasisPartial)
+    }
+
+    // The position's numbers agree with the totals over the same holdings.
+    let totals = PortfolioMath.totals([
+        HoldingInput(ticker: "AAPL", name: "Apple", securityType: "equity", quantity: 10, value: 2_000, costBasis: 1_500),
+        HoldingInput(ticker: "AAPL", name: "Apple", securityType: "equity", quantity: 5, value: 1_000, costBasis: nil),
+    ])
+    expectEqual(totals.gain, 500)
+
+    // Built directly (previews): the whole position counts when it has a cost basis.
+    let withCost = PortfolioPosition(symbol: "VTI", name: "Vanguard Total", securityType: "etf",
+                                     quantity: 110, value: 31_900, costBasis: 26_700, weightPct: 48.6)
+    expectEqual(withCost.valueWithCostBasis, 31_900)
+    expectEqual(withCost.quantityWithCostBasis, 110)
+    expectEqual(withCost.gain, 5_200)
+    expect(!withCost.isCostBasisPartial)
+    let withoutCost = PortfolioPosition(symbol: "CUR:USD", name: "U.S. Dollar", securityType: "cash",
+                                        quantity: 2_500, value: 2_500, costBasis: nil, weightPct: 3.8)
+    expectEqual(withoutCost.valueWithCostBasis, 0)
+    expectEqual(withoutCost.quantityWithCostBasis, 0)
+    expectEqual(withoutCost.gain, nil)
+    expect(!withoutCost.isCostBasisPartial)
+}
+
 suite("Cashtags") {
     expectEqual(Cashtags.extract(from: "Loading up on $AAPL and $msft, trimming $AAPL."), ["AAPL", "MSFT"])
     expectEqual(Cashtags.extract(from: "Paid $100 for US$5 of $BRK.B."), ["BRK.B"])

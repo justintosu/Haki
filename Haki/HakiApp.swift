@@ -13,11 +13,22 @@ import SwiftUI
 struct HakiApp: App {
     /// Opens the on-device store at launch. If it can't be opened the app
     /// shows a recovery screen instead of crashing.
-    @State private var database = AppDatabase()
+    @State private var database: AppDatabase
 
-    @State private var auth = AuthService.live
-    @State private var social = SocialService.live
-    @State private var portfolio = PortfolioService.live
+    @State private var auth: AuthService
+    @State private var social: SocialService
+    @State private var portfolio: PortfolioService
+
+    init() {
+        // A larger shared cache, so full-size feed photos aren't downloaded
+        // again while scrolling back through the feed. Set first: creating the
+        // services creates the Supabase client, which uses `URLSession.shared`.
+        URLCache.shared = URLCache(memoryCapacity: 50 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024, directory: nil)
+        _database = State(initialValue: AppDatabase())
+        _auth = State(initialValue: AuthService.live)
+        _social = State(initialValue: SocialService.live)
+        _portfolio = State(initialValue: PortfolioService.live)
+    }
 
     var body: some Scene {
         WindowGroup {

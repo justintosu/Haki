@@ -28,20 +28,56 @@ nonisolated struct PortfolioPosition: Hashable, Identifiable {
     let securityType: String?
     let quantity: Double
     let value: Double
-    /// `nil` when no holding of this security reported a cost basis.
+    /// What was paid for the holdings that report a (positive) cost basis;
+    /// `nil` when none of this security's holdings does.
     let costBasis: Double?
+    /// Value of the holdings that report a cost basis (for an apples-to-apples gain).
+    let valueWithCostBasis: Double
+    /// Shares (or units) of the holdings that report a cost basis.
+    let quantityWithCostBasis: Double
     /// Share of the whole portfolio, 0...100.
     let weightPct: Double
 
+    /// `valueWithCostBasis` and `quantityWithCostBasis` default to the whole
+    /// position when it has a positive cost basis, and to 0 otherwise.
+    init(
+        symbol: String,
+        name: String,
+        securityType: String?,
+        quantity: Double,
+        value: Double,
+        costBasis: Double?,
+        weightPct: Double,
+        valueWithCostBasis: Double? = nil,
+        quantityWithCostBasis: Double? = nil
+    ) {
+        let hasCost = (costBasis ?? 0) > 0
+        self.symbol = symbol
+        self.name = name
+        self.securityType = securityType
+        self.quantity = quantity
+        self.value = value
+        self.costBasis = costBasis
+        self.valueWithCostBasis = valueWithCostBasis ?? (hasCost ? value : 0)
+        self.quantityWithCostBasis = quantityWithCostBasis ?? (hasCost ? quantity : 0)
+        self.weightPct = weightPct
+    }
+
     var id: String { symbol }
 
-    var gain: Double? { costBasis.map { value - $0 } }
+    /// Gain on the holdings that report a cost basis; `nil` when none does.
+    var gain: Double? { costBasis.map { valueWithCostBasis - $0 } }
 
-    /// Return on cost, in percent. `nil` without a positive cost basis.
+    /// Return on cost, in percent, of the holdings that report a cost basis.
+    /// `nil` without a positive cost basis.
     var gainPct: Double? {
         guard let costBasis, costBasis > 0 else { return nil }
-        return (value - costBasis) / costBasis * 100
+        return (valueWithCostBasis - costBasis) / costBasis * 100
     }
+
+    /// Some of the position (by value) has no reported cost basis, so `gain`
+    /// and `gainPct` cover only part of it.
+    var isCostBasisPartial: Bool { costBasis != nil && valueWithCostBasis + 0.005 < value }
 
     var isCash: Bool { securityType?.lowercased() == "cash" }
 }
@@ -128,6 +164,8 @@ nonisolated enum PortfolioMath {
             var quantity = 0.0
             var value = 0.0
             var costBasis: Double?
+            var valueWithCostBasis = 0.0
+            var quantityWithCostBasis = 0.0
         }
         var bySymbol: [String: Accumulator] = [:]
         var order: [String] = []
@@ -142,8 +180,11 @@ nonisolated enum PortfolioMath {
             }
             item.quantity += holding.quantity
             item.value += holding.value
-            if let cost = holding.costBasis {
+            // Same rule as `totals`: only holdings with a positive cost basis count.
+            if let cost = holding.costBasis, cost > 0 {
                 item.costBasis = (item.costBasis ?? 0) + cost
+                item.valueWithCostBasis += holding.value
+                item.quantityWithCostBasis += holding.quantity
             }
             bySymbol[symbol] = item
         }
@@ -157,7 +198,9 @@ nonisolated enum PortfolioMath {
                 quantity: item.quantity,
                 value: item.value,
                 costBasis: item.costBasis,
-                weightPct: total > 0 ? item.value / total * 100 : 0
+                weightPct: total > 0 ? item.value / total * 100 : 0,
+                valueWithCostBasis: item.valueWithCostBasis,
+                quantityWithCostBasis: item.quantityWithCostBasis
             )
         }
         .sorted { $0.value != $1.value ? $0.value > $1.value : $0.symbol < $1.symbol }

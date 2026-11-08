@@ -583,8 +583,17 @@ import Supabase
     }
 
     private static func postError(_ error: any Error) -> any Error {
-        if let postgrestError = error as? PostgrestError, postgrestError.code == "23514" {
-            return BackendError(code: "23514", message: "A post needs a caption, a photo or a portfolio, and a valid ticker.")
+        if let postgrestError = error as? PostgrestError {
+            if postgrestError.code == "23514" {
+                return BackendError(code: "23514", message: "A post needs a caption, a photo or a portfolio, and a valid ticker.")
+            }
+            // Haki's own checks (`raise exception`, SQLSTATE P0001) are written for
+            // people, e.g. "Connect a brokerage before sharing your portfolio."
+            // when a portfolio post's author has no holdings.
+            let message = postgrestError.message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if postgrestError.code == "P0001", !message.isEmpty {
+                return BackendError(code: "P0001", message: message)
+            }
         }
         return Backend.userFacingError(error, fallback: "Couldn't share your post. Try again.")
     }

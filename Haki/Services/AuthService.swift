@@ -13,6 +13,7 @@ import CryptoKit
 import Foundation
 import Observation
 import Supabase
+import UIKit
 
 nonisolated enum EmailSignUpOutcome: Hashable {
     /// Email confirmation is off: the account was created and the user is signed in.
@@ -408,16 +409,25 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
     }
 
     /// Calls the delete-account edge function, then signs out.
+    ///
+    /// For an account with a Sign in with Apple identity, first asks Apple for
+    /// a fresh authorization code (the user confirms once more) so the server
+    /// can revoke Haki's Apple tokens. If that's cancelled or fails, the
+    /// account is still deleted: Apple never stands in the way.
     func deleteAccount() async throws {
         guard let client else {
             resetToSignedOut()
             return
         }
         guard userID != nil else { throw AuthServiceError.notSignedIn }
+        var appleCode: String?
+        if let user = client.auth.currentUser, Self.hasAppleIdentity(user) {
+            appleCode = await Self.freshAppleAuthorizationCode()
+        }
         do {
             try await client.functions.invoke(
                 "delete-account",
-                options: FunctionInvokeOptions(body: AuthEmptyBody())
+                options: FunctionInvokeOptions(body: AuthDeleteAccountBody(appleAuthorizationCode: appleCode))
             )
         } catch {
             throw friendlyError(error)
@@ -799,6 +809,29 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
             .joined(separator: " ")
     }
 
+    /// Whether the account can sign in with Apple (as the delete-account function checks it).
+    private static func hasAppleIdentity(_ user: User) -> Bool {
+        if user.identities?.contains(where: { $0.provider == "apple" }) == true {
+            return true
+        }
+        let providers = user.appMetadata["providers"]?.arrayValue ?? []
+        return providers.contains(where: { $0.stringValue == "apple" })
+    }
+
+    /// Asks Apple for a fresh, single-use authorization code for the signed-in
+    /// Apple ID (no name or email requested). `nil` if the user cancels, it
+    /// fails, or there's no window to show Apple's sheet over.
+    private static func freshAppleAuthorizationCode() async -> String? {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+        guard let anchor = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return nil }
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        let reauthorization = AuthAppleReauthorization(anchor: anchor)
+        return await reauthorization.run(controller)
+    }
+
     // MARK: - Offline profile cache
 
     private static func cacheKey(for uid: UUID) -> String {
@@ -885,4 +918,64 @@ nonisolated private struct ProfileChanges: Encodable {
     }
 }
 
-nonisolated private struct AuthEmptyBody: Encodable {}
+/// The delete-account request: `{}`, or `{"apple_authorization_code": ...}`
+/// when Apple gave a fresh code (a `nil` code isn't sent).
+nonisolated private struct AuthDeleteAccountBody: Encodable {
+    var appleAuthorizationCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case appleAuthorizationCode = "apple_authorization_code"
+    }
+}
+
+// MARK: - Apple re-authorization
+
+/// Runs one Sign in with Apple request and hands back its authorization code.
+/// Keeps the controller (which holds its delegate weakly) and itself alive
+/// until Apple answers.
+private final class AuthAppleReauthorization: NSObject, ASAuthorizationControllerDelegate,
+    ASAuthorizationControllerPresentationContextProviding {
+    private let anchor: ASPresentationAnchor
+    private var controller: ASAuthorizationController?
+    private var continuation: CheckedContinuation<String?, Never>?
+
+    init(anchor: ASPresentationAnchor) {
+        self.anchor = anchor
+        super.init()
+    }
+
+    /// The code as text (what the delete-account function expects), or `nil`.
+    func run(_ controller: ASAuthorizationController) async -> String? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            self.continuation = continuation
+            self.controller = controller
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        let credential = authorization.credential as? ASAuthorizationAppleIDCredential
+        let code = credential?.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
+        finish(with: code)
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: any Error) {
+        // Cancelled or failed: the account is deleted without revoking Apple's tokens.
+        finish(with: nil)
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        anchor
+    }
+
+    /// Resumes the caller once (later calls do nothing). The controller is
+    /// kept until this object goes away after `run` returns, so it isn't
+    /// released while it's still calling its delegate.
+    private func finish(with code: String?) {
+        let continuation = self.continuation
+        self.continuation = nil
+        continuation?.resume(returning: code)
+    }
+}

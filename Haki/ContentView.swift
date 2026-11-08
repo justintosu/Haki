@@ -13,6 +13,8 @@ import SwiftUI
 /// `NavigationStack`. Budgets, Recurring and Accounts open from Home.
 struct RootView: View {
     @State private var router = AppRouter()
+    @Environment(PortfolioService.self) private var portfolio
+    @Environment(\.scenePhase) private var scenePhase
 
     @Query(filter: #Predicate<TransactionRecord> { !$0.isReviewed })
     private var unreviewed: [TransactionRecord]
@@ -38,6 +40,12 @@ struct RootView: View {
             }
         }
         .environment(router)
+        .onChange(of: scenePhase) { _, phase in
+            // Back in the foreground (maybe the next day): pull fresh brokerage
+            // data if it's due, whichever tab is showing. Throttled by the service.
+            guard phase == .active else { return }
+            portfolio.syncIfDue()
+        }
     }
 }
 

@@ -333,7 +333,7 @@ struct EditProfileView: View {
 
     private var privacyFooter: String {
         if sharePortfolio {
-            return "People who visit your profile see what you hold and each holding's share of your portfolio, plus your total return. Dollar amounts, balances and account details are never shown."
+            return "People who view your profile see the stocks and funds you hold, each one's share of your portfolio and its return in percent, and your total return. Your posts about a stock you hold show a “holds” badge. Dollar amounts, balances and account details are never shown."
         }
         return "Your portfolio is hidden from everyone else. You still see it on your own profile."
     }
@@ -383,12 +383,14 @@ struct EditProfileView: View {
         defer { isLoadingPhoto = false }
         do {
             guard let data = try await item.loadTransferable(type: Data.self),
-                  let jpeg = ImageUpload.jpegData(from: data, maxDimension: 512, quality: 0.85),
+                  let jpeg = await ImageUpload.makeJPEG(from: data, maxDimension: 512, quality: 0.85),
                   let image = UIImage(data: jpeg)
             else {
                 errorMessage = "Haki couldn't use that photo. Try a different one."
                 return
             }
+            // A newer pick replaced this one while it was being prepared.
+            guard photoItem == item else { return }
             avatarJPEG = jpeg
             avatarPreview = image
         } catch {

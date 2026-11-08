@@ -18,6 +18,8 @@ struct OnboardingView: View {
     @State private var username = ""
     @State private var displayName = ""
     @State private var sharePortfolio = true
+    /// Continue stays disabled until the user agrees to the Community Guidelines.
+    @State private var agreesToGuidelines = false
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarJPEG: Data?
     /// `avatarJPEG` decoded once for the preview, so typing doesn't re-decode it.
@@ -42,6 +44,7 @@ struct OnboardingView: View {
                 usernameSection
                 nameSection
                 privacySection
+                guidelinesSection
                 accountSection
             }
             .scrollDismissesKeyboard(.interactively)
@@ -241,6 +244,22 @@ struct OnboardingView: View {
         }
     }
 
+    private var guidelinesSection: some View {
+        Section {
+            NavigationLink {
+                CommunityGuidelinesView()
+            } label: {
+                Label("Read the Community Guidelines", systemImage: "hand.raised")
+            }
+            Toggle("I agree to the Community Guidelines", isOn: $agreesToGuidelines)
+                .disabled(isSaving)
+        } header: {
+            Text("Community")
+        } footer: {
+            Text("By continuing you agree to the Community Guidelines. Haki doesn't allow harassment, hate, scams or other objectionable content, and removes accounts that post it.")
+        }
+    }
+
     private var accountSection: some View {
         Section {
             Button {
@@ -264,6 +283,14 @@ struct OnboardingView: View {
     private var continueBar: some View {
         VStack(spacing: 0) {
             Divider()
+            if !agreesToGuidelines {
+                Text("Agree to the Community Guidelines to continue.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+            }
             Button {
                 Task { await submit() }
             } label: {
@@ -291,7 +318,7 @@ struct OnboardingView: View {
     }
 
     private var canContinue: Bool {
-        UsernameRules.isValid(username) && usernameServerError == nil
+        UsernameRules.isValid(username) && usernameServerError == nil && agreesToGuidelines
             && !isSaving && !isLoadingPhoto && !isSigningOut
     }
 
