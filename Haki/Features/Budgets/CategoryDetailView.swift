@@ -26,6 +26,10 @@ struct CategoryDetailView: View {
 
     @State private var displayedMonth: MonthInterval
     @State private var showsEditor = false
+    /// The transaction opened from the list. Pushed from here, not from its
+    /// row, so an edit that moves it out of this category or month (and
+    /// removes the row) doesn't pop the detail screen.
+    @State private var openedTransaction: TransactionRecord?
 
     init(category: TransactionCategory, month: MonthInterval) {
         self.category = category
@@ -48,6 +52,9 @@ struct CategoryDetailView: View {
         .background(Color.hakiBackground)
         .navigationTitle(isGone ? "" : category.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $openedTransaction) { transaction in
+            TransactionDetailView(transaction: transaction)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Edit") {
@@ -190,7 +197,13 @@ struct CategoryDetailView: View {
     private func budgetProgress(_ progress: BudgetProgress, data: CategoryDetailData) -> some View {
         let pace = paceStyle(progress, data: data)
         return VStack(alignment: .leading, spacing: 10) {
-            BudgetBar(progress: progress, tint: categoryColor, monthFraction: data.monthFraction, height: 10)
+            BudgetBar(
+                progress: progress,
+                tint: categoryColor,
+                monthFraction: data.monthFraction,
+                height: 10,
+                pace: data.pace(progress)
+            )
             Text(remainingText(progress))
                 .font(.subheadline.weight(.semibold))
                 .monospacedDigit()
@@ -328,8 +341,8 @@ struct CategoryDetailView: View {
         let lastID = rows.last?.id
         return VStack(alignment: .leading, spacing: 10) {
             ForEach(rows) { transaction in
-                NavigationLink {
-                    TransactionDetailView(transaction: transaction)
+                Button {
+                    openedTransaction = transaction
                 } label: {
                     TransactionRow(transaction: transaction, showsDate: true)
                         .contentShape(Rectangle())

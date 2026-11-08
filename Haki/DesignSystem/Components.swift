@@ -128,6 +128,10 @@ struct BudgetBar: View {
     /// When set, a tick marks how much of the month has passed (0...1).
     var monthFraction: Double?
     var height: CGFloat = 8
+    /// The pace shown in a label next to the bar. When set, the color and
+    /// VoiceOver follow it, so the bar never disagrees with the label;
+    /// otherwise a straight-line rule against `monthFraction` decides.
+    var pace: BudgetPace? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -153,12 +157,23 @@ struct BudgetBar: View {
     }
 
     private var barColor: Color {
-        if progress.isOverBudget { return .hakiNegative }
-        if isAheadOfPace { return .hakiWarning }
-        return tint
+        switch displayedPace {
+        case .overBudget: return .hakiNegative
+        case .aheadOfPace: return .hakiWarning
+        case .onTrack: return tint
+        }
     }
 
-    /// Spending is well ahead of how much of the month has passed (the orange state).
+    /// The state the color and VoiceOver show: `pace` when given, otherwise
+    /// over budget or the straight-line rule.
+    private var displayedPace: BudgetPace {
+        if let pace { return pace }
+        if progress.isOverBudget { return .overBudget }
+        return isAheadOfPace ? .aheadOfPace : .onTrack
+    }
+
+    /// Spending is well ahead of how much of the month has passed (the orange
+    /// state when no `pace` is given).
     private var isAheadOfPace: Bool {
         guard let monthFraction else { return false }
         return progress.fractionUsed > monthFraction * 1.1 && progress.fractionUsed > 0.5
@@ -168,11 +183,14 @@ struct BudgetBar: View {
     /// ahead of pace, 40 percent of the month gone" or "112 percent, over budget".
     private var accessibilityValueText: String {
         let used = "\(Int((progress.fractionUsed * 100).rounded())) percent"
-        if progress.isOverBudget { return "\(used), over budget" }
-        guard let monthFraction else { return used }
-        let pace = isAheadOfPace ? "ahead of pace" : "on track"
-        guard monthFraction > 0, monthFraction < 1 else { return "\(used), \(pace)" }
-        return "\(used), \(pace), \(Int((monthFraction * 100).rounded())) percent of the month gone"
+        let state = displayedPace
+        if state == .overBudget { return "\(used), over budget" }
+        let paceText = state == .aheadOfPace ? "ahead of pace" : "on track"
+        guard let monthFraction else {
+            return state == .aheadOfPace ? "\(used), \(paceText)" : used
+        }
+        guard monthFraction > 0, monthFraction < 1 else { return "\(used), \(paceText)" }
+        return "\(used), \(paceText), \(Int((monthFraction * 100).rounded())) percent of the month gone"
     }
 }
 

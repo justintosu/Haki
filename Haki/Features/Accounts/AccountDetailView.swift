@@ -26,6 +26,10 @@ struct AccountDetailView: View {
     /// deleted only once this screen has gone, so nothing reads a deleted model.
     @State private var deletionRequested = false
     @State private var balanceSavedCount = 0
+    /// The transaction opened from the list. Pushed from here, not from its
+    /// row, so an edit that moves it to another account (and removes the
+    /// row) doesn't pop the detail screen.
+    @State private var openedTransaction: TransactionRecord?
 
     /// How many recent transactions the screen lists.
     private static let transactionLimit = 50
@@ -71,6 +75,9 @@ struct AccountDetailView: View {
         .background(Color.hakiBackground)
         .navigationTitle(account.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $openedTransaction) { transaction in
+            TransactionDetailView(transaction: transaction)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Edit") {
@@ -223,8 +230,8 @@ struct AccountDetailView: View {
                                 Divider()
                                     .padding(.leading, 48)
                             }
-                            NavigationLink {
-                                TransactionDetailView(transaction: transaction)
+                            Button {
+                                openedTransaction = transaction
                             } label: {
                                 TransactionRow(transaction: transaction, showsDate: true)
                                     .padding(.vertical, 6)

@@ -201,9 +201,29 @@ struct SettingsView: View {
                 systemImage: "building.columns.fill",
                 tint: .teal
             )
+
+            NavigationLink {
+                CommunityGuidelinesView()
+            } label: {
+                SettingsIconLabel("Community Guidelines", systemImage: "person.2.fill", tint: .green)
+            }
+
+            if let supportURL {
+                Link(destination: supportURL) {
+                    SettingsIconLabel("Contact support", systemImage: "envelope.fill", tint: .blue)
+                }
+                .accessibilityHint("Opens an email to Haki support")
+            }
         } header: {
             Text("About")
         }
+    }
+
+    /// A mailto: link to `AppInfo.supportEmail`, or nil while it isn't set.
+    private var supportURL: URL? {
+        let email = AppInfo.supportEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else { return nil }
+        return URL(string: "mailto:\(email)")
     }
 
     // MARK: Text
@@ -252,7 +272,7 @@ struct SettingsView: View {
         let after = (try? modelContext.fetchCount(FetchDescriptor<TransactionRecord>())) ?? 0
         transactionCount = after
         if after > before {
-            statusMessage = "Sample data added. Take a look around Overview, Budgets and Recurring."
+            statusMessage = "Sample data added. Take a look around Home, where Budgets, Recurring and Accounts open too."
             feedbackTrigger += 1
         } else {
             statusMessage = "Sample data is already loaded."

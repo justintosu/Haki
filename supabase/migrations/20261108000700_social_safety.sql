@@ -241,17 +241,15 @@ create trigger blocks_end_follows after insert on public.blocks
   for each row execute function private.end_follows_on_block();
 
 -- A blocked person can't follow you or comment on your posts.
-drop policy "Users follow as themselves" on public.follows;
-create policy "Users follow as themselves"
-  on public.follows for insert to authenticated
+alter policy "Users follow as themselves"
+  on public.follows
   with check (
     (select auth.uid()) = follower_id
     and not private.blocked_between((select auth.uid()), followee_id)
   );
 
-drop policy "Users comment as themselves" on public.comments;
-create policy "Users comment as themselves"
-  on public.comments for insert to authenticated
+alter policy "Users comment as themselves"
+  on public.comments
   with check (
     (select auth.uid()) = author_id
     and not private.blocked_between(
@@ -383,8 +381,3 @@ as $$
   limit least(greatest(p_limit, 1), 100);
 $$;
 
--- One-time cleanup of anything stamped in the future before this migration.
-update public.posts set created_at = now() where created_at > now();
-update public.comments set created_at = now() where created_at > now();
-update public.post_likes set created_at = now() where created_at > now();
-update public.follows set created_at = now() where created_at > now();

@@ -19,7 +19,7 @@ struct BudgetsSummaryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            BudgetBar(progress: snapshot.overall, monthFraction: snapshot.monthFraction, height: 10)
+            BudgetBar(progress: snapshot.overall, monthFraction: snapshot.monthFraction, height: 10, pace: snapshot.pace)
             paceDetails
             BudgetsPaceChart(snapshot: snapshot)
                 .frame(height: 160)

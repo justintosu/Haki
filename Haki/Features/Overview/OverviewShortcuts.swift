@@ -154,7 +154,7 @@ struct OverviewInvestingCard: View {
             }
             .accessibilityElement(children: .combine)
         } else {
-            Text("Connect a brokerage to see your portfolio next to your spending, and share how it's doing with friends.")
+            Text("Connect a brokerage to see your portfolio next to your spending, and share how it's doing — as percentages, never amounts.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
