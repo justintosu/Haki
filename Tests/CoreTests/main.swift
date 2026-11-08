@@ -530,6 +530,84 @@ suite("SampleLedger") {
     expect(spent > 300_000 && spent < 900_000, "a believable month of spending: \(spent)")
 }
 
+// MARK: - Portfolio
+
+suite("PortfolioMath") {
+    let holdings = [
+        HoldingInput(ticker: "AAPL", name: "Apple", securityType: "equity", quantity: 5, value: 1_000, costBasis: 800),
+        HoldingInput(ticker: "aapl", name: "Apple Inc.", securityType: "equity", quantity: 1, value: 200, costBasis: 150),
+        HoldingInput(ticker: "VTI", name: "Vanguard Total", securityType: "etf", quantity: 10, value: 2_400, costBasis: nil),
+        HoldingInput(ticker: nil, name: "Cash Sweep", securityType: "cash", quantity: 400, value: 400, costBasis: nil),
+        HoldingInput(ticker: "DEAD", name: "Delisted", securityType: "equity", quantity: 1, value: 0, costBasis: 10),
+    ]
+    let positions = PortfolioMath.positions(holdings)
+    expectEqual(positions.map(\.symbol), ["VTI", "AAPL", "Cash Sweep"], "merged by symbol, zero-value dropped")
+    expectEqual(positions[1].quantity, 6)
+    expectEqual(positions[1].value, 1_200)
+    expectEqual(positions[1].costBasis, 950)
+    expectEqual(positions[1].weightPct, 30)
+    expectEqual(positions[0].gainPct, nil, "no cost basis")
+    expect(abs((positions[1].gainPct ?? 0) - 26.315789) < 0.0001)
+    expect(positions[2].isCash)
+
+    let totals = PortfolioMath.totals(holdings)
+    expectEqual(totals.value, 4_000)
+    expectEqual(totals.costBasis, 950)
+    expectEqual(totals.valueWithCostBasis, 1_200)
+    expectEqual(totals.gain, 250)
+
+    let allocation = PortfolioMath.allocation(holdings)
+    expectEqual(allocation.map(\.assetClass), [.etfs, .stocks, .cash])
+    expectEqual(allocation.map(\.weightPct), [60, 30, 10])
+
+    let shared = PortfolioMath.sharedPortfolio(holdings, limit: 1)
+    expectEqual(shared.holdings, [SharedPortfolio.Item(ticker: "VTI", weightPct: 66.7), SharedPortfolio.Item(ticker: "Other", weightPct: 33.3)],
+                "cash excluded, rest folded into Other")
+    expectEqual(shared.totalGainPct, 26.3)
+    expectEqual(PortfolioMath.sharedPortfolio([], limit: 5).holdings, [])
+
+    // Encoded with the database's snake_case keys.
+    let json = try JSONEncoder().encode(SharedPortfolio(holdings: [.init(ticker: "VTI", weightPct: 50)], totalGainPct: 1.5))
+    let text = String(decoding: json, as: UTF8.self)
+    expect(text.contains("\"weight_pct\":50") && text.contains("\"total_gain_pct\":1.5"), text)
+    let decoded = try JSONDecoder().decode(SharedPortfolio.self, from: Data(#"{"holdings":[{"ticker":"AAPL","weight_pct":12.5}],"total_gain_pct":null}"#.utf8))
+    expectEqual(decoded.holdings.first?.weightPct, 12.5)
+    expectEqual(decoded.totalGainPct, nil)
+
+    expectEqual(PortfolioMath.changePct(from: 200, to: 250), 25)
+    expectEqual(PortfolioMath.changePct(from: 0, to: 250), nil)
+    expectEqual(AssetClass(plaidType: "Mutual Fund"), .funds)
+    expectEqual(AssetClass(plaidType: nil), .other)
+}
+
+suite("Cashtags") {
+    expectEqual(Cashtags.extract(from: "Loading up on $AAPL and $msft, trimming $AAPL."), ["AAPL", "MSFT"])
+    expectEqual(Cashtags.extract(from: "Paid $100 for US$5 of $BRK.B."), ["BRK.B"])
+    expectEqual(Cashtags.extract(from: "$TSLA"), ["TSLA"])
+    expectEqual(Cashtags.extract(from: "no tags $ here $"), [])
+    let text = "Buy $NVDA now"
+    expectEqual(Cashtags.ranges(in: text).map { String(text[$0]) }, ["$NVDA"])
+    expect(Cashtags.isValidTicker("BRK.B"))
+    expect(Cashtags.isValidTicker("RDS-A"))
+    expect(!Cashtags.isValidTicker("aapl"))
+    expect(!Cashtags.isValidTicker("1ABC"))
+    expect(!Cashtags.isValidTicker(""))
+    expect(!Cashtags.isValidTicker("ABCDEFGHIJK"))
+}
+
+suite("UsernameRules") {
+    expect(UsernameRules.isValid("alice_a"))
+    expect(UsernameRules.isValid("bob.smith"))
+    expect(!UsernameRules.isValid("Al"))
+    expect(!UsernameRules.isValid("Alice"))
+    expect(!UsernameRules.isValid("has space"))
+    expect(!UsernameRules.isValid(String(repeating: "a", count: 25)))
+    expectEqual(UsernameRules.normalize("Hello World!_99"), "helloworld_99")
+    expectEqual(UsernameRules.problem(with: "ab"), "Use at least 3 characters.")
+    expectEqual(UsernameRules.problem(with: "Ab3"), "Only a–z, 0–9, underscore and period.")
+    expectEqual(UsernameRules.problem(with: "good_name"), nil)
+}
+
 // MARK: - Summary
 
 print("\(checkCount) checks, \(failureCount) failures")
