@@ -39,17 +39,18 @@ jobs:
 
       - name: Build for the iOS Simulator
         run: |
-          set -o pipefail
+          set +e
           xcodebuild \
             -project Haki.xcodeproj \
-            -target Haki \
-            -sdk iphonesimulator \
+            -scheme Haki \
+            -destination "generic/platform=iOS Simulator" \
             -configuration Debug \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee build.log | grep -E "error:|warning:|\*\* BUILD" || true
-          exit ${PIPESTATUS[0]}
+            build > build.log 2>&1
+          status=$?
+          grep -E "error:|\*\* BUILD" build.log
+          echo "xcodebuild exited with $status"
+          exit $status
 
       - name: Summarize errors
         if: failure()
