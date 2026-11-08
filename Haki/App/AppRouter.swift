@@ -9,7 +9,7 @@
 import Foundation
 import Observation
 
-/// Filters for the Transactions tab.
+/// Filters for the Transactions screen.
 enum TransactionFilter: Hashable {
     case all
     case needsReview
@@ -21,6 +21,7 @@ enum TransactionFilter: Hashable {
 
 /// Money screens that live under the Home tab rather than having tabs of their own.
 enum HomeDestination: String, Hashable, Identifiable {
+    case transactions
     case budgets
     case recurring
     case accounts
@@ -32,9 +33,9 @@ enum HomeDestination: String, Hashable, Identifiable {
 final class AppRouter {
     enum Tab: Hashable {
         case home
-        case transactions
         case feed
         case invest
+        case health
         case profile
     }
 
@@ -48,13 +49,13 @@ final class AppRouter {
     /// clears it when the user navigates back.
     var homeDestination: HomeDestination?
 
-    /// Switches to the Transactions tab with a filter applied.
+    /// Switches to the Home tab and opens Transactions with a filter applied.
     func showTransactions(_ filter: TransactionFilter) {
         pendingTransactionFilter = filter
-        selectedTab = .transactions
+        showHome(.transactions)
     }
 
-    /// Switches to the Home tab and opens Budgets, Recurring or Accounts.
+    /// Switches to the Home tab and opens Transactions, Budgets, Recurring or Accounts.
     func showHome(_ destination: HomeDestination) {
         selectedTab = .home
         homeDestination = destination

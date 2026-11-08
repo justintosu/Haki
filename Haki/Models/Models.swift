@@ -286,6 +286,13 @@ enum HakiSchema {
         RecurringItem.self,
         BalanceSnapshot.self,
         MerchantRule.self,
+        FoodEntry.self,
+        WorkoutRecord.self,
+        WorkoutExerciseRecord.self,
+        WorkoutSetRecord.self,
+        RoutineRecord.self,
+        RoutineExerciseRecord.self,
+        CustomExerciseRecord.self,
     ]
 
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {

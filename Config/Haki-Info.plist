@@ -14,5 +14,9 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Haki uses the camera when you take a photo of a meal, so it can estimate the calories and protein.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Haki uses your location to show restaurants and stores near you and their menus.</string>
 </dict>
 </plist>

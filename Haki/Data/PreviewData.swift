@@ -19,6 +19,7 @@ enum PreviewData {
         do {
             let container = try HakiSchema.makeContainer(inMemory: true)
             LedgerStore.loadSampleData(into: container.mainContext)
+            loadHealthSamples(into: container.mainContext)
             return container
         } catch {
             fatalError("Couldn't create the preview database: \(error)")
@@ -77,5 +78,7 @@ extension View {
             .environment(AuthService.preview)
             .environment(SocialService.preview)
             .environment(PortfolioService.preview)
+            .environment(FoodAIService.preview)
+            .environment(HevySyncService.preview)
     }
 }

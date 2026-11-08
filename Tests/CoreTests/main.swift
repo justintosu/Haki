@@ -784,6 +784,10 @@ suite("UsernameRules") {
     expectEqual(UsernameRules.problem(with: "good_name"), nil)
 }
 
+// MARK: - Health
+
+runHealthTests()
+
 // MARK: - Summary
 
 print("\(checkCount) checks, \(failureCount) failures")

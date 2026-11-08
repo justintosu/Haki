@@ -18,6 +18,8 @@ struct HakiApp: App {
     @State private var auth: AuthService
     @State private var social: SocialService
     @State private var portfolio: PortfolioService
+    @State private var foodAI: FoodAIService
+    @State private var hevy: HevySyncService
 
     init() {
         // A larger shared cache, so full-size feed photos aren't downloaded
@@ -28,6 +30,8 @@ struct HakiApp: App {
         _auth = State(initialValue: AuthService.live)
         _social = State(initialValue: SocialService.live)
         _portfolio = State(initialValue: PortfolioService.live)
+        _foodAI = State(initialValue: FoodAIService.live)
+        _hevy = State(initialValue: HevySyncService.live)
     }
 
     var body: some Scene {
@@ -36,10 +40,13 @@ struct HakiApp: App {
                 .environment(auth)
                 .environment(social)
                 .environment(portfolio)
+                .environment(foodAI)
+                .environment(hevy)
                 .onChange(of: auth.state) { _, state in
                     // Brokerage data belongs to the account, so drop it on sign-out.
                     if state == .signedOut {
                         portfolio.reset()
+                        foodAI.reset()
                     }
                 }
         }

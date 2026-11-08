@@ -9,8 +9,8 @@
 import Foundation
 import SwiftUI
 
-/// Budgets · Recurring · Accounts tiles at the top of Home. At accessibility
-/// text sizes the three tiles don't fit side by side, so they become
+/// Transactions · Budgets · Recurring · Accounts tiles at the top of Home. At
+/// accessibility text sizes the tiles don't fit side by side, so they become
 /// full-width rows.
 struct OverviewShortcutsRow: View {
     @Environment(AppRouter.self) private var router
@@ -24,7 +24,7 @@ struct OverviewShortcutsRow: View {
                 tiles
             }
         } else {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 tiles
             }
         }
@@ -32,6 +32,7 @@ struct OverviewShortcutsRow: View {
 
     @ViewBuilder
     private var tiles: some View {
+        tile("Transactions", systemImage: "list.bullet.rectangle.portrait.fill", tint: .blue, destination: .transactions)
         tile("Budgets", systemImage: "chart.bar.fill", tint: .orange, destination: .budgets)
         tile("Recurring", systemImage: "arrow.triangle.2.circlepath", tint: .indigo, destination: .recurring)
         tile("Accounts", systemImage: "building.columns.fill", tint: .teal, destination: .accounts)

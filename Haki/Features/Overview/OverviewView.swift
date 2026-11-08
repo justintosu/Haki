@@ -182,7 +182,7 @@ struct OverviewView: View {
 
     // MARK: Home destinations
 
-    /// Budgets, Recurring and Accounts open on top of Overview (see `AppRouter.showHome`).
+    /// Transactions, Budgets, Recurring and Accounts open on top of Overview (see `AppRouter.showHome`).
     private var homeDestination: Binding<HomeDestination?> {
         Binding(
             get: { router.homeDestination },
@@ -193,6 +193,8 @@ struct OverviewView: View {
     @ViewBuilder
     private func homeScreen(for destination: HomeDestination) -> some View {
         switch destination {
+        case .transactions:
+            TransactionsView()
         case .budgets:
             BudgetsView()
         case .recurring:

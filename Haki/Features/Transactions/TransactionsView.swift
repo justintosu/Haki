@@ -34,9 +34,6 @@ struct TransactionsView: View {
     @State private var activeSheet: Sheet? = nil
     @State private var pendingDeletion: TransactionRecord? = nil
     @State private var reviewFeedback = 0
-    /// Changing this rebuilds the navigation stack, which pops back to the
-    /// list when another tab sends us here with a filter.
-    @State private var stackID = UUID()
     /// Transactions whose detail screen was opened from the list. They stay
     /// listed even if an edit makes them stop matching the filter or search
     /// (say, marking one reviewed in "Needs review"): removing a row pops the
@@ -52,12 +49,10 @@ struct TransactionsView: View {
 
     var body: some View {
         let visible = visibleTransactions
-        NavigationStack {
-            content(visible: visible)
-                .navigationTitle("Transactions")
-                .toolbar { toolbarContent }
-        }
-        .id(stackID)
+        // Pushed from Home (AppRouter.showTransactions / HomeDestination.transactions).
+        content(visible: visible)
+            .navigationTitle("Transactions")
+            .toolbar { toolbarContent }
         .sheet(item: $activeSheet) { sheet in
             sheetContent(sheet)
         }
@@ -592,7 +587,6 @@ struct TransactionsView: View {
         appliedSearch = ""
         activeSheet = nil
         pendingDeletion = nil
-        stackID = UUID()
     }
 }
 
@@ -635,11 +629,15 @@ private struct TransactionsDayHeader: View {
 // MARK: - Previews
 
 #Preview("Transactions") {
-    TransactionsView()
-        .previewEnvironment()
+    NavigationStack {
+        TransactionsView()
+    }
+    .previewEnvironment()
 }
 
 #Preview("No transactions") {
-    TransactionsView()
-        .previewEnvironment(empty: true)
+    NavigationStack {
+        TransactionsView()
+    }
+    .previewEnvironment(empty: true)
 }
