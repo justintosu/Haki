@@ -30,6 +30,8 @@ struct PlacesView: View {
     /// The last search that ran to the end, so coming back from a menu
     /// doesn't search again.
     @State private var completedKey: PlacesSearchKey?
+    /// How that search ended, restored if a newer search is abandoned part-way.
+    @State private var completedPhase: PlacesSearchPhase = .idle
     /// Typed text already searched; a retry of the same text skips the debounce.
     @State private var lastSearchedText = ""
 
@@ -292,7 +294,7 @@ struct PlacesView: View {
 
     @ViewBuilder
     private var searchAreaButton: some View {
-        if plan(for: searchKey) != nil {
+        if canSearchArea {
             Button {
                 searchAttempt += 1
             } label: {
@@ -349,6 +351,14 @@ struct PlacesView: View {
         }
     }
 
+    /// Something to search for, or a map area small enough to look for
+    /// restaurants in (also when location is off).
+    private var canSearchArea: Bool {
+        if plan(for: searchKey) != nil { return true }
+        guard let visibleRegion else { return false }
+        return visibleRegion.span.latitudeDelta > 0 && visibleRegion.span.latitudeDelta < 1.5
+    }
+
     private var failureMessage: String? {
         if case .failed(let message) = phase { return message }
         return nil
@@ -402,19 +412,30 @@ struct PlacesView: View {
         if let shortcut = key.shortcut {
             return PlacesSearchPlan(query: shortcut.query, title: shortcut.resultsTitle, categories: shortcut.categories)
         }
-        if key.hasLocation {
-            return PlacesSearchPlan(query: "restaurants", title: "Restaurants near you", categories: PlacesShortcut.foodCategories)
+        if key.hasLocation || key.attempt > 0 {
+            // A tap on "Search this area" (or "Try again") works without the
+            // person's location too: it searches the map's visible area.
+            let title = key.attempt > 0 ? "Restaurants in this area" : "Restaurants near you"
+            return PlacesSearchPlan(query: "restaurants", title: title, categories: PlacesShortcut.foodCategories)
         }
         return nil
     }
 
     private func search(_ key: PlacesSearchKey) async {
-        guard key != completedKey else { return }
+        guard key != completedKey else {
+            // A newer search was abandoned part-way (its results never
+            // replaced these); show how this one ended again.
+            if phase == .searching {
+                phase = completedPhase
+            }
+            return
+        }
         guard let searchPlan = plan(for: key) else {
             results = []
             selectedPlaceID = nil
             phase = .idle
             completedKey = key
+            completedPhase = .idle
             return
         }
         if !key.text.isEmpty, key.text != lastSearchedText {
@@ -456,6 +477,7 @@ struct PlacesView: View {
         }
         lastSearchedText = key.text
         completedKey = key
+        completedPhase = phase
     }
 
     private func show(_ places: [PlacesPlace], title: String) {
@@ -599,6 +621,10 @@ private enum PlacesSearchError {
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain {
             return "You're offline. Check your connection and try again."
+        }
+        if nsError.domain == "MKErrorDomain" && nsError.code == 3 {
+            // MKError.loadingThrottled
+            return "That's a lot of searches in a row. Wait a moment and try again."
         }
         return "Apple Maps search isn't responding. Try again in a moment."
     }

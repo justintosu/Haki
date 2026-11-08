@@ -22,6 +22,8 @@ struct MenuDishSheet: View {
 
     @State private var servings: Double = 1
     @State private var mealType: MealType = MealType.suggested(for: .now)
+    /// Set on the first "Log it", so a quick second tap can't log it twice.
+    @State private var hasLogged = false
 
     var body: some View {
         NavigationStack {
@@ -148,6 +150,8 @@ struct MenuDishSheet: View {
     // MARK: Actions
 
     private func log() {
+        guard !hasLogged else { return }
+        hasLogged = true
         FoodStore.add(dish: dish, placeName: placeName, servings: servings, mealType: mealType, in: modelContext)
         onLogged(mealType)
         dismiss()

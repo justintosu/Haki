@@ -795,8 +795,13 @@ private struct MealReviewForm: View {
 
     private func addItem() {
         let item = MealDraftItem()
+        let id = item.id
         withAnimation(.snappy) { draft.items.append(item) }
-        focus = .name(item.id)
+        // Focus once the new row exists.
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            focus = .name(id)
+        }
     }
 }
 
@@ -813,8 +818,17 @@ private struct MealTotalsRow: View {
         }
         .padding(.vertical, 4)
         .animation(.snappy, value: totals)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Total")
+        .accessibilityValue(spokenTotals)
+    }
+
+    private var spokenTotals: String {
+        let calories = FoodFormat.whole(totals.calories)
+        let protein = FoodFormat.grams(totals.proteinG)
+        let carbs = FoodFormat.grams(totals.carbsG)
+        let fat = FoodFormat.grams(totals.fatG)
+        return "\(calories) kilocalories, \(protein) grams protein, \(carbs) grams carbs, \(fat) grams fat"
     }
 
     private func stat(_ title: String, value: String, unit: String, tint: Color) -> some View {

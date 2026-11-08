@@ -24,7 +24,7 @@ enum FoodFormat {
     static func grams(_ value: Double) -> String {
         guard value.isFinite, abs(value) < 1_000_000_000 else { return "0" }
         if abs(value) < 10 {
-            return value.formatted(FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0...1)))
+            return value.formatted(.number.precision(.fractionLength(0...1)))
         }
         return Int(value.rounded()).formatted()
     }
