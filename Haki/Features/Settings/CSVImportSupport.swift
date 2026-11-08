@@ -17,12 +17,20 @@ nonisolated enum CSVImportFileContents {
 }
 
 nonisolated enum CSVImportFileReader {
+    /// Far more than years of bank exports; a bigger file is almost certainly
+    /// not a transaction export, and reading it would stall the app.
+    static let maxFileBytes = 25_000_000
+
     /// Reads a file picked with `.fileImporter`, with security-scoped access.
     /// Decodes UTF-8 (or UTF-16 with a byte-order mark) and falls back to Latin-1.
     static func read(_ url: URL) -> CSVImportFileContents {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer {
             if didAccess { url.stopAccessingSecurityScopedResource() }
+        }
+
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > maxFileBytes {
+            return .failure("The file is too large to import. Export a shorter date range from your bank and try again.")
         }
 
         let data: Data

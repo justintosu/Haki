@@ -53,6 +53,19 @@ nonisolated struct SampleLedger: Hashable {
     var recurring: [RecurringSpec]
     var balances: [BalanceSpec]
 
+    /// The demo accounts. Their (fictional) institutions mark them as sample data.
+    static let accountSpecs = [
+        AccountSpec(key: "checking", name: "Everyday Checking", institution: "Harborline Bank", kind: .checking, balanceCents: 4_812_37, mask: "4821"),
+        AccountSpec(key: "savings", name: "High-Yield Savings", institution: "Harborline Bank", kind: .savings, balanceCents: 18_250_00, mask: "7730"),
+        AccountSpec(key: "card", name: "Everyday Rewards Card", institution: "Northwind Card", kind: .creditCard, balanceCents: 1_243_88, mask: "1009"),
+        AccountSpec(key: "brokerage", name: "Brokerage", institution: "Tidewater Invest", kind: .investment, balanceCents: 42_380_15, mask: "5512"),
+        AccountSpec(key: "retirement", name: "401(k)", institution: "Tidewater Invest", kind: .investment, balanceCents: 61_904_62, mask: "0042"),
+        AccountSpec(key: "auto", name: "Auto Loan", institution: "Summit Credit Union", kind: .loan, balanceCents: 9_420_00, mask: "3318"),
+    ]
+
+    /// Institutions of the demo accounts.
+    static var institutions: Set<String> { Set(accountSpecs.map(\.institution)) }
+
     // MARK: Generation
 
     /// - Parameters:
@@ -63,14 +76,7 @@ nonisolated struct SampleLedger: Hashable {
         let firstMonth = MonthInterval(containing: now, calendar: calendar).adding(months: -(max(1, months) - 1))
         let start = calendar.noon(on: firstMonth.start(in: calendar))
 
-        let accounts = [
-            AccountSpec(key: "checking", name: "Everyday Checking", institution: "Harborline Bank", kind: .checking, balanceCents: 4_812_37, mask: "4821"),
-            AccountSpec(key: "savings", name: "High-Yield Savings", institution: "Harborline Bank", kind: .savings, balanceCents: 18_250_00, mask: "7730"),
-            AccountSpec(key: "card", name: "Everyday Rewards Card", institution: "Northwind Card", kind: .creditCard, balanceCents: 1_243_88, mask: "1009"),
-            AccountSpec(key: "brokerage", name: "Brokerage", institution: "Tidewater Invest", kind: .investment, balanceCents: 42_380_15, mask: "5512"),
-            AccountSpec(key: "retirement", name: "401(k)", institution: "Tidewater Invest", kind: .investment, balanceCents: 61_904_62, mask: "0042"),
-            AccountSpec(key: "auto", name: "Auto Loan", institution: "Summit Credit Union", kind: .loan, balanceCents: 9_420_00, mask: "3318"),
-        ]
+        let accounts = accountSpecs
 
         var transactions: [TransactionSpec] = []
         func add(_ date: Date, _ description: String, _ cents: Int, account: String, category: String? = nil) {

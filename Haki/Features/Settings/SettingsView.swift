@@ -17,7 +17,6 @@ struct SettingsView: View {
     @Environment(AppRouter.self) private var router
 
     @Query private var accounts: [Account]
-    @Query private var transactions: [TransactionRecord]
     @Query private var categories: [TransactionCategory]
     @Query private var rules: [MerchantRule]
     @Query private var recurringItems: [RecurringItem]
@@ -26,7 +25,11 @@ struct SettingsView: View {
     @AppStorage("dismissedRecurringSuggestions") private var dismissedRecurringSuggestions = ""
 
     @State private var showsSampleDataConfirmation = false
+    @State private var showsRemoveSampleDataConfirmation = false
     @State private var showsEraseConfirmation = false
+    /// Counted rather than queried: Settings only shows the number, and a
+    /// query would load every transaction.
+    @State private var transactionCount = 0
     @State private var statusMessage: String?
     @State private var feedbackTrigger = 0
 
@@ -41,6 +44,10 @@ struct SettingsView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Settings")
+            .onAppear {
+                // Also runs when coming back from Import CSV.
+                refreshTransactionCount()
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -54,7 +61,15 @@ struct SettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Adds demo accounts with balance history, a few months of transactions, recurring bills and suggested budgets so you can explore Haki. Your own transactions and budgets stay as they are.")
+                Text("Adds demo accounts with balance history, a few months of transactions and recurring bills so you can explore Haki. They count toward your totals until you remove them here. Suggested budgets are added only when Haki is empty; your own transactions and budgets aren't changed.")
+            }
+            .confirmationDialog("Remove sample data?", isPresented: $showsRemoveSampleDataConfirmation, titleVisibility: .visible) {
+                Button("Remove Sample Data", role: .destructive) {
+                    removeSampleData()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Deletes the demo accounts with everything in them, including transactions you added to them, plus the demo bills and the suggested budgets you haven't changed. The rest of your data stays as it is.")
             }
             .confirmationDialog("Erase all data?", isPresented: $showsEraseConfirmation, titleVisibility: .visible) {
                 Button("Erase All Data", role: .destructive) {
@@ -107,6 +122,15 @@ struct SettingsView: View {
                 SettingsIconLabel("Load sample data", systemImage: "sparkles", tint: .purple)
             }
             .accessibilityHint("Adds demo accounts and transactions")
+
+            if LedgerStore.hasSampleData(accounts: accounts, bills: recurringItems, categories: categories) {
+                Button {
+                    showsRemoveSampleDataConfirmation = true
+                } label: {
+                    SettingsIconLabel("Remove sample data", systemImage: "minus.circle.fill", tint: .gray)
+                }
+                .accessibilityHint("Asks for confirmation before deleting the demo accounts, transactions and bills")
+            }
 
             Button(role: .destructive) {
                 showsEraseConfirmation = true
@@ -187,7 +211,7 @@ struct SettingsView: View {
     private var statsText: String {
         [
             SettingsFormat.count(accounts.count, "account", "accounts"),
-            SettingsFormat.count(transactions.count, "transaction", "transactions"),
+            SettingsFormat.count(transactionCount, "transaction", "transactions"),
             SettingsFormat.count(categories.count, "category", "categories"),
         ]
         .joined(separator: " · ")
@@ -203,7 +227,7 @@ struct SettingsView: View {
     private var eraseMessage: String {
         var parts: [String] = []
         if !accounts.isEmpty { parts.append(SettingsFormat.count(accounts.count, "account", "accounts")) }
-        if !transactions.isEmpty { parts.append(SettingsFormat.count(transactions.count, "transaction", "transactions")) }
+        if transactionCount > 0 { parts.append(SettingsFormat.count(transactionCount, "transaction", "transactions")) }
         if !recurringItems.isEmpty { parts.append(SettingsFormat.count(recurringItems.count, "bill", "bills")) }
         if !rules.isEmpty { parts.append(SettingsFormat.count(rules.count, "rule", "rules")) }
 
@@ -226,6 +250,7 @@ struct SettingsView: View {
             LedgerStore.loadSampleData(into: modelContext)
         }
         let after = (try? modelContext.fetchCount(FetchDescriptor<TransactionRecord>())) ?? 0
+        transactionCount = after
         if after > before {
             statusMessage = "Sample data added. Take a look around Overview, Budgets and Recurring."
             feedbackTrigger += 1
@@ -234,13 +259,27 @@ struct SettingsView: View {
         }
     }
 
+    private func removeSampleData() {
+        withAnimation(.snappy) {
+            LedgerStore.removeSampleData(in: modelContext)
+        }
+        refreshTransactionCount()
+        statusMessage = "Sample data removed."
+        feedbackTrigger += 1
+    }
+
     private func eraseAllData() {
         withAnimation(.snappy) {
             LedgerStore.eraseAllData(in: modelContext)
         }
+        refreshTransactionCount()
         dismissedRecurringSuggestions = ""
         statusMessage = "All data erased. The built-in categories were restored."
         feedbackTrigger += 1
+    }
+
+    private func refreshTransactionCount() {
+        transactionCount = (try? modelContext.fetchCount(FetchDescriptor<TransactionRecord>())) ?? 0
     }
 }
 

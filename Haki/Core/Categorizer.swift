@@ -86,9 +86,11 @@ nonisolated enum Categorizer {
 
     /// Checked in order: the first rule with a matching pattern wins.
     private static let keywordRules: [KeywordRule] = [
+        // Only unambiguous transfer wording here. Bare "CARD PAYMENT" is left
+        // out: UK banks write every debit card purchase as "CARD PAYMENT TO …".
         rule("transfer", [
-            "PAYMENT THANK YOU", "AUTOPAY", "AUTO PAY", "AUTOMATIC PAYMENT", "ONLINE TRANSFER",
-            "TRANSFER", "XFER", "ZELLE", "VENMO", "CASH APP", "CREDIT CARD PAYMENT", "CARD PAYMENT",
+            "PAYMENT THANK YOU", "ONLINE TRANSFER", "TRANSFER", "XFER", "ZELLE", "VENMO", "CASH APP",
+            "CREDIT CARD PAYMENT",
         ]),
         rule("income", [
             "PAYROLL", "DIRECT DEP", "DIRECT DEPOSIT", "SALARY", "DIVIDEND", "INTEREST PAYMENT",
@@ -141,6 +143,11 @@ nonisolated enum Categorizer {
         rule("shopping", [
             "AMAZON", "AMZN", "TARGET", "WALMART", "WAL MART", "BEST BUY", "APPLE STORE", "IKEA", "ETSY",
             "EBAY", "NORDSTROM", "ZARA", "UNIQLO", "NIKE", "HOME DEPOT", "LOWES", "TJ MAXX", "TJMAXX",
+        ]),
+        // Generic autopay wording, checked after the merchants: "VERIZON
+        // WIRELESS AUTOPAY" is a phone bill, "NORTHWIND CARD AUTOPAY" a card payment.
+        rule("transfer", [
+            "AUTOPAY", "AUTO PAY", "AUTOMATIC PAYMENT",
         ]),
     ]
 }

@@ -24,6 +24,7 @@ struct CSVImportView: View {
     @State private var showsFileImporter = false
     @State private var preview: CSVImportPreview?
     @State private var convention: AmountSignConvention = .negativeIsMoneyOut
+    @State private var dateOrder: CSVDateOrder = .monthFirst
     @State private var destination: CSVImportDestination = .newAccount
     @State private var newAccountName = ""
     @State private var newAccountKind: AccountKind = .checking
@@ -43,8 +44,10 @@ struct CSVImportView: View {
             let parsed = CSVImportPreview(fileName: fileName, text: sampleText, result: result, existingFingerprints: [])
             _preview = State(initialValue: parsed)
             let initialConvention: AmountSignConvention = result.signConvention ?? .negativeIsMoneyOut
+            let initialDateOrder: CSVDateOrder = result.dateOrder ?? .monthFirst
             let initialDestination: CSVImportDestination = parsed.hasAccountColumn ? .fileAccounts : .newAccount
             _convention = State(initialValue: initialConvention)
+            _dateOrder = State(initialValue: initialDateOrder)
             _destination = State(initialValue: initialDestination)
         }
     }
@@ -61,6 +64,9 @@ struct CSVImportView: View {
             }
             .onChange(of: convention) { _, newValue in
                 reparse(with: newValue)
+            }
+            .onChange(of: dateOrder) { _, newValue in
+                reparse(dateOrder: newValue)
             }
             .sensoryFeedback(.success, trigger: completedImports)
     }
@@ -91,6 +97,7 @@ struct CSVImportView: View {
         List {
             fileSection(preview)
             signSection(preview)
+            dateOrderSection(preview)
             if preview.transactionCount > 0 {
                 destinationSection(preview)
             }
@@ -188,6 +195,27 @@ struct CSVImportView: View {
                 Text("Amount signs")
             } footer: {
                 Text("Haki guessed this from the file. Check the examples: a purchase should read as spent. If it reads as received, choose the other option.")
+            }
+        }
+    }
+
+    /// Shown only when every date in the file would read either way, e.g.
+    /// 05/11/2026 in a file with no day after the 12th.
+    @ViewBuilder
+    private func dateOrderSection(_ preview: CSVImportPreview) -> some View {
+        if preview.result.dateOrder != nil && preview.result.dateOrderIsAmbiguous {
+            Section {
+                Picker("Dates in this file", selection: $dateOrder) {
+                    ForEach(CSVDateOrder.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } header: {
+                Text("Date order")
+            } footer: {
+                Text("Haki couldn't tell from the file whether a date like 05/11 is 5 November or May 11, so it went by your region. Check the dates in the preview; if they're in the wrong months, choose the other option.")
             }
         }
     }
@@ -385,12 +413,18 @@ struct CSVImportView: View {
         }
     }
 
-    /// Parses the text and shows the preview. `convention == nil` means a
-    /// newly chosen file: the convention is inferred and the defaults reset.
-    private func load(_ text: String, fileName: String, convention chosen: AmountSignConvention?) {
+    /// Parses the text and shows the preview. With neither a convention nor
+    /// a date order (a newly chosen file), both are inferred and the defaults reset.
+    private func load(
+        _ text: String,
+        fileName: String,
+        convention chosen: AmountSignConvention?,
+        dateOrder chosenDateOrder: CSVDateOrder? = nil
+    ) {
+        let isNewFile = chosen == nil && chosenDateOrder == nil
         let result: CSVImportResult
         do {
-            result = try CSVTransactionImporter.parse(text, signConvention: chosen)
+            result = try CSVTransactionImporter.parse(text, signConvention: chosen, dateOrder: chosenDateOrder)
         } catch {
             showError(error.localizedDescription, fileName: fileName)
             return
@@ -409,21 +443,27 @@ struct CSVImportView: View {
             errorFileName = nil
             summary = nil
             preview = parsed
-            if chosen == nil {
+            if isNewFile {
                 destination = defaultDestination(for: parsed)
                 createsMissingAccounts = true
                 showsSkippedRows = parsed.transactionCount == 0
             }
         }
-        if chosen == nil {
-            // Set after `preview`, so the change handler sees it's already applied.
+        if isNewFile {
+            // Set after `preview`, so the change handlers see they're already applied.
             convention = result.signConvention ?? .negativeIsMoneyOut
+            dateOrder = result.dateOrder ?? .monthFirst
         }
     }
 
     private func reparse(with newConvention: AmountSignConvention) {
         guard let preview, let current = preview.result.signConvention, current != newConvention else { return }
-        load(preview.text, fileName: preview.fileName, convention: newConvention)
+        load(preview.text, fileName: preview.fileName, convention: newConvention, dateOrder: preview.result.dateOrder)
+    }
+
+    private func reparse(dateOrder newDateOrder: CSVDateOrder) {
+        guard let preview, let current = preview.result.dateOrder, current != newDateOrder else { return }
+        load(preview.text, fileName: preview.fileName, convention: preview.result.signConvention, dateOrder: newDateOrder)
     }
 
     private func defaultDestination(for preview: CSVImportPreview) -> CSVImportDestination {

@@ -29,10 +29,15 @@ nonisolated enum Money {
     }
 
     /// Converts a decimal amount to cents, rounding half away from zero.
+    /// Amounts beyond `Int`'s range are clamped to ±`Int.max` cents.
     static func cents(from decimal: Decimal) -> Int {
         var scaled = decimal * 100
         var rounded = Decimal()
         NSDecimalRound(&rounded, &scaled, 0, .plain)
+        // `Int(truncating:)` silently wraps around out of range.
+        let limit = Decimal(Int.max)
+        if rounded >= limit { return Int.max }
+        if rounded <= -limit { return -Int.max }
         return Int(truncating: NSDecimalNumber(decimal: rounded))
     }
 
@@ -85,8 +90,13 @@ nonisolated enum Money {
 
     // MARK: Parsing
 
+    /// The largest amount `parseCents` accepts, in currency units (one
+    /// trillion). Anything bigger is a typo or a reference number in the
+    /// wrong column, and would overflow later arithmetic on cents.
+    static let maxParsedAmount: Decimal = 1_000_000_000_000
+
     /// Parses user- or CSV-entered text into cents. Returns `nil` when the text
-    /// holds no number.
+    /// holds no number, or one larger than `maxParsedAmount`.
     ///
     /// Accepts currency symbols and codes, grouping separators, a leading or
     /// trailing minus, and accounting parentheses: `"$1,234.56"`, `"-12"`,
@@ -121,7 +131,9 @@ nonisolated enum Money {
 
         guard digits.contains(where: \.isNumber) else { return nil }
         if digits.hasPrefix(".") { digits = "0" + digits }
-        guard let value = Decimal(string: digits, locale: Locale(identifier: "en_US_POSIX")) else {
+        guard let value = Decimal(string: digits, locale: Locale(identifier: "en_US_POSIX")),
+              !value.isNaN, value <= maxParsedAmount
+        else {
             return nil
         }
         let cents = cents(from: value)

@@ -28,6 +28,9 @@ struct TransactionsView: View {
 
     @State private var filter: TransactionFilter = .all
     @State private var searchText = ""
+    /// `searchText` once typing pauses: what the list is filtered by, so
+    /// each keystroke doesn't refilter and regroup every transaction.
+    @State private var appliedSearch = ""
     @State private var activeSheet: Sheet? = nil
     @State private var pendingDeletion: TransactionRecord? = nil
     @State private var reviewFeedback = 0
@@ -83,6 +86,9 @@ struct TransactionsView: View {
         .onChange(of: searchText) { _, _ in
             pinnedIDs.removeAll()
         }
+        .task(id: searchText) {
+            await applySearchWhenTypingPauses()
+        }
     }
 
     // MARK: Content
@@ -102,7 +108,7 @@ struct TransactionsView: View {
         let unreviewedCount: Int = transactions.reduce(0) { count, transaction in
             transaction.isReviewed ? count : count + 1
         }
-        let showsReviewPrompt: Bool = filter == .all && unreviewedCount > 0 && searchText.isEmpty
+        let showsReviewPrompt: Bool = filter == .all && unreviewedCount > 0 && appliedSearch.isEmpty
         return List {
             if filter != .all {
                 Section {
@@ -426,8 +432,8 @@ struct TransactionsView: View {
 
     @ViewBuilder
     private var emptyResults: some View {
-        if !TransactionsSearchQuery(searchText).isEmpty {
-            ContentUnavailableView.search(text: searchText)
+        if !TransactionsSearchQuery(appliedSearch).isEmpty {
+            ContentUnavailableView.search(text: appliedSearch)
         } else {
             switch filter {
             case .needsReview:
@@ -505,7 +511,7 @@ struct TransactionsView: View {
 
     private var visibleTransactions: [TransactionRecord] {
         let activeFilter = filter
-        let query = TransactionsSearchQuery(searchText)
+        let query = TransactionsSearchQuery(appliedSearch)
         let pinned = pinnedIDs
         guard activeFilter != .all || !query.isEmpty else { return transactions }
         return transactions.filter { transaction in
@@ -519,8 +525,21 @@ struct TransactionsView: View {
     /// Keeps a row listed while its detail screen is open (see `pinnedIDs`).
     /// Only needed while a filter or search hides some transactions.
     private func pin(_ id: UUID) {
-        guard filter != .all || !searchText.isEmpty, !pinnedIDs.contains(id) else { return }
+        guard filter != .all || !appliedSearch.isEmpty, !pinnedIDs.contains(id) else { return }
         pinnedIDs.insert(id)
+    }
+
+    /// Filters by the search text after a short pause in typing. Clearing
+    /// the search applies at once.
+    private func applySearchWhenTypingPauses() async {
+        let text = searchText
+        if !text.isEmpty {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+        }
+        if appliedSearch != text {
+            appliedSearch = text
+        }
     }
 
     private func setFilter(_ newValue: TransactionFilter) {
@@ -570,6 +589,7 @@ struct TransactionsView: View {
         pinnedIDs.removeAll()
         filter = pending
         searchText = ""
+        appliedSearch = ""
         activeSheet = nil
         pendingDeletion = nil
         stackID = UUID()

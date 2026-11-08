@@ -23,6 +23,13 @@ suite("Money.parseCents") {
     expectEqual(Money.parseCents("abc"), nil)
     expectEqual(Money.parseCents("1.2.3"), nil)
     expectEqual(Money.parseCents("$"), nil)
+    // Amounts too large to be real would wrap around Int and crash later math.
+    expectEqual(Money.parseCents("1000000000000"), 100_000_000_000_000, "the cap itself is accepted")
+    expectEqual(Money.parseCents("1000000000000.01"), nil)
+    expectEqual(Money.parseCents("99999999999999999"), nil)
+    expectEqual(Money.parseCents("92233720368547758.08"), nil)
+    expectEqual(Money.parseCents("-92233720368547758.08"), nil)
+    expectEqual(Money.parseCents(String(repeating: "9", count: 60)), nil)
 }
 
 suite("Money.format") {
@@ -38,6 +45,8 @@ suite("Money.format") {
     expectEqual(Money.compact(-250_000, currencyCode: "USD", locale: usLocale), "-$2.5K")
     expectEqual(Money.cents(from: Decimal(string: "10.005")!), 1_001)
     expectEqual(Money.cents(from: Decimal(string: "-10.005")!), -1_001)
+    expectEqual(Money.cents(from: Decimal(Int.max) * 1_000), Int.max, "clamped, not wrapped")
+    expectEqual(Money.cents(from: Decimal(Int.max) * -1_000), -Int.max, "clamped, not wrapped")
     expectEqual(Money.editableText(fromCents: 1_250, locale: usLocale), "12.50")
     expectEqual(Money.editableText(fromCents: 123_456, locale: usLocale), "1234.56")
     expectEqual(Money.parseCents(Money.editableText(fromCents: -98_765, locale: usLocale)), -98_765, "round trip")
@@ -201,6 +210,8 @@ suite("BudgetProgress") {
     expectEqual(BudgetProgress(budgetCents: 30_000, spentCents: 18_000).pace(elapsedDays: 10, daysInMonth: 30), .aheadOfPace)
     expectEqual(progress.projectedCents(elapsedDays: 10, daysInMonth: 30), 36_000)
     expectEqual(progress.projectedCents(elapsedDays: 0, daysInMonth: 30), 12_000)
+    expectEqual(BudgetProgress(budgetCents: 100, spentCents: Int.max / 2).projectedCents(elapsedDays: 1, daysInMonth: 31),
+                Int.max, "huge stored spending is clamped instead of trapping")
 
     let over = BudgetProgress(budgetCents: 10_000, spentCents: 12_500)
     expect(over.isOverBudget)
@@ -277,6 +288,10 @@ suite("Categorizer") {
         ("PG&E WEB ONLINE", 11_500, "utilities"),
         ("SHELLFISH SHACK", 4_500, nil),
         ("KEZAR BAR & GRILL", 5_600, "restaurants"),
+        ("VERIZON WIRELESS AUTOPAY", 8_500, "utilities"),
+        ("NORTHWIND CARD AUTOPAY", 120_000, "transfer"),
+        ("CREDIT CARD PAYMENT", 120_000, "transfer"),
+        ("CARD PAYMENT TO TESCO STORES", 1_240, nil),
         ("", 100, nil),
     ]
     for (description, cents, expected) in cases {
@@ -351,13 +366,76 @@ suite("CSVTransactionImporter: debit and credit columns") {
     14.07.2026;Rewe Markt;23,10;
     15.07.2026;Gehalt;;3000,00
     """
-    // Semicolon files often use a decimal comma; the importer's parseCents
-    // ignores "," with the default "." separator, so 23,10 reads as 2310.
     let result = try CSVTransactionImporter.parse(csv, calendar: testCalendar)
     expectEqual(result.transactions.count, 2)
     expectEqual(result.transactions[0].date, day(2026, 7, 14), "dd.MM.yyyy")
-    expect(result.transactions[0].amountCents > 0, "money out is positive")
-    expect(result.transactions[1].amountCents < 0, "money in is negative")
+    expectEqual(result.transactions.map(\.amountCents), [2_310, -300_000], "decimal comma")
+}
+
+suite("CSVTransactionImporter: decimal separator") {
+    let csv = """
+    Date;Description;Amount
+    2026-11-03;CORNER CAFE;-5,25
+    2026-11-04;RENT;-1.250,00
+    2026-11-05;REFUND;"12,5"
+    """
+    let result = try CSVTransactionImporter.parse(csv, calendar: testCalendar)
+    expectEqual(result.transactions.map(\.amountCents), [525, 125_000, -1_250])
+
+    expectEqual(CSVTransactionImporter.detectDecimalSeparator(in: ["2,500.00", "-5.25"]), ".")
+    expectEqual(CSVTransactionImporter.detectDecimalSeparator(in: ["1.250,00", "(5,25)", "EUR 3,1"]), ",")
+    expectEqual(CSVTransactionImporter.detectDecimalSeparator(in: ["1,250", "1.250", "12", ""]), ".", "no votes")
+    expectEqual(CSVTransactionImporter.detectDecimalSeparator(in: ["5,25", "3.10"]), ".", "mixed votes keep the default")
+
+    let huge = try CSVTransactionImporter.parse("Date,Description,Amount\n2026-11-03,CAFE,-5.25\n2026-11-04,REF,123456789012345678\n",
+                                                calendar: testCalendar)
+    expectEqual(huge.transactions.count, 1)
+    expectEqual(huge.skipped.map(\.reason), ["Unreadable amount \"123456789012345678\""])
+}
+
+suite("CSVTransactionImporter: date order") {
+    let dayFirst = """
+    Date,Description,Amount
+    05/11/2026,TESCO STORES,-12.40
+    20/11/2026,TESCO STORES,-8.00
+    """
+    let uk = try CSVTransactionImporter.parse(dayFirst, locale: usLocale, calendar: testCalendar)
+    expectEqual(uk.transactions.map(\.date), [day(2026, 11, 5), day(2026, 11, 20)], "one order for the whole file")
+    expectEqual(uk.dateOrder, .dayFirst)
+    expect(!uk.dateOrderIsAmbiguous)
+
+    let monthFirst = "Date,Description,Amount\n11/05/2026,CAFE,-1\n11/20/2026,CAFE,-1"
+    let us = try CSVTransactionImporter.parse(monthFirst, locale: Locale(identifier: "en_GB"), calendar: testCalendar)
+    expectEqual(us.transactions.map(\.date), [day(2026, 11, 5), day(2026, 11, 20)])
+    expectEqual(us.dateOrder, .monthFirst)
+
+    // Nothing over 12: the region decides, or the caller.
+    let ambiguous = "Date,Description,Amount\n05/11/2026,CAFE,-1\n06/11/2026,CAFE,-1"
+    let gb = try CSVTransactionImporter.parse(ambiguous, locale: Locale(identifier: "en_GB"), calendar: testCalendar)
+    expectEqual(gb.transactions.first?.date, day(2026, 11, 5))
+    expectEqual(gb.dateOrder, .dayFirst)
+    expect(gb.dateOrderIsAmbiguous)
+    let usGuess = try CSVTransactionImporter.parse(ambiguous, locale: usLocale, calendar: testCalendar)
+    expectEqual(usGuess.transactions.first?.date, day(2026, 5, 11))
+    expectEqual(usGuess.dateOrder, .monthFirst)
+    let chosen = try CSVTransactionImporter.parse(ambiguous, dateOrder: .dayFirst, locale: usLocale, calendar: testCalendar)
+    expectEqual(chosen.transactions.first?.date, day(2026, 11, 5))
+    expect(chosen.dateOrderIsAmbiguous, "still ambiguous, so the choice stays offered")
+
+    // Dates that contradict each other are each read on their own.
+    let mixed = "Date,Description,Amount\n20/11/2026,CAFE,-1\n11/21/2026,CAFE,-1"
+    let mixedResult = try CSVTransactionImporter.parse(mixed, locale: usLocale, calendar: testCalendar)
+    expectEqual(mixedResult.transactions.map(\.date), [day(2026, 11, 20), day(2026, 11, 21)])
+    expectEqual(mixedResult.dateOrder, nil)
+
+    let iso = try CSVTransactionImporter.parse("Date,Description,Amount\n2026-11-05,CAFE,-1", calendar: testCalendar)
+    expectEqual(iso.dateOrder, nil, "ISO dates have a fixed order")
+    expect(!iso.dateOrderIsAmbiguous)
+
+    expectEqual(CSVDateOrder.preferred(in: usLocale), .monthFirst)
+    expectEqual(CSVDateOrder.preferred(in: Locale(identifier: "en_GB")), .dayFirst)
+    expectEqual(CSVDateOrder.preferred(in: Locale(identifier: "de_DE")), .dayFirst)
+    expectEqual(CSVDateOrder.preferred(in: Locale(identifier: "ja_JP")), .monthFirst)
 }
 
 suite("CSVTransactionImporter: errors and dates") {
@@ -385,6 +463,10 @@ suite("CSVTransactionImporter: errors and dates") {
     expectEqual(parse("Jul 14, 2026"), day(2026, 7, 14))
     expectEqual(parse("14 Jul 2026"), day(2026, 7, 14))
     expectEqual(parse("07/14/2026 09:30"), day(2026, 7, 14))
+    expectEqual(CSVTransactionImporter.parseDate("05/11/2026", calendar: testCalendar, order: .dayFirst), day(2026, 11, 5))
+    expectEqual(CSVTransactionImporter.parseDate("05/11/2026", calendar: testCalendar, order: .monthFirst), day(2026, 5, 11))
+    expectEqual(CSVTransactionImporter.parseDate("14.07.2026", calendar: testCalendar, order: .monthFirst), day(2026, 7, 14),
+                "dotted dates stay day first")
     expectEqual(parse("02/30/2026"), nil)
     expectEqual(parse("yesterday"), nil)
     expectEqual(parse(""), nil)

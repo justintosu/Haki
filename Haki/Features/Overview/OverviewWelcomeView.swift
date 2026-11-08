@@ -3,6 +3,8 @@
 //  Haki
 //
 //  The first thing a new user sees: what Haki does and three ways to start.
+//  Someone who has linked a brokerage (but has no money data yet) also sees
+//  their investments.
 //
 
 import Foundation
@@ -12,6 +14,8 @@ struct OverviewWelcomeView: View {
     let onExploreSample: () -> Void
     let onImportCSV: () -> Void
     let onAddAccount: () -> Void
+
+    @Environment(PortfolioService.self) private var portfolio
 
     var body: some View {
         ScrollView {
@@ -24,11 +28,21 @@ struct OverviewWelcomeView: View {
                 .hakiCard(padding: 20)
 
                 footnote
+
+                if portfolio.hasConnections {
+                    OverviewInvestingCard()
+                }
             }
             .padding(.horizontal)
             .padding(.bottom)
         }
         .background(Color.hakiBackground)
+        .task {
+            // Loads the brokerage connections, so linked investments show up here.
+            if portfolio.lastLoaded == nil, !portfolio.isLoading {
+                await portfolio.refresh()
+            }
+        }
     }
 
     // MARK: Sections
@@ -105,7 +119,8 @@ struct OverviewWelcomeView: View {
 
     private var footnote: some View {
         VStack(spacing: 6) {
-            Label("Everything stays on this device.", systemImage: "lock.fill")
+            Label("Your accounts, transactions, budgets and bills stay on this device.", systemImage: "lock.fill")
+                .multilineTextAlignment(.center)
             Text("Sample data adds demo accounts and transactions. You can erase it any time in Settings.")
                 .multilineTextAlignment(.center)
         }
@@ -149,7 +164,7 @@ private struct OverviewWelcomeFeature {
 #Preview {
     NavigationStack {
         OverviewWelcomeView(onExploreSample: {}, onImportCSV: {}, onAddAccount: {})
-            .navigationTitle("Overview")
+            .navigationTitle("Home")
     }
     .previewEnvironment(empty: true)
 }

@@ -36,6 +36,8 @@ struct TransactionsSearchQuery {
     /// Text such as "$12" or "1,234" that needs the fully formatted amount.
     private let needsFormattedAmount: Bool
     private let decimalSeparator: Character
+    /// The style `Money.format` uses, built once per query rather than per row.
+    private let currencyStyle: Decimal.FormatStyle.Currency
 
     init(_ raw: String) {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -46,6 +48,8 @@ struct TransactionsSearchQuery {
         needsFormattedAmount = trimmed.contains { character in
             !character.isNumber && character != separator
         }
+        currencyStyle = Decimal.FormatStyle.Currency(code: Money.defaultCurrencyCode, locale: Locale.current)
+            .precision(.fractionLength(2))
     }
 
     var isEmpty: Bool { text.isEmpty }
@@ -64,7 +68,8 @@ struct TransactionsSearchQuery {
         if hasDigits {
             let magnitude = abs(transaction.amountCents)
             if needsFormattedAmount {
-                if Money.format(magnitude).localizedStandardContains(text) { return true }
+                let formatted = Money.decimal(fromCents: magnitude).formatted(currencyStyle)
+                if formatted.localizedStandardContains(text) { return true }
             } else if Self.plainAmount(magnitude, separator: decimalSeparator).contains(text) {
                 return true
             }

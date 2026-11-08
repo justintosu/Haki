@@ -210,6 +210,11 @@ nonisolated struct BudgetProgress: Hashable {
     func projectedCents(elapsedDays: Int, daysInMonth: Int) -> Int {
         guard elapsedDays > 0 else { return spentCents }
         let rate = Double(spentCents) / Double(min(elapsedDays, daysInMonth))
-        return Int((rate * Double(daysInMonth)).rounded())
+        let projected = (rate * Double(daysInMonth)).rounded()
+        // Clamp, so a huge stored amount can't trap the conversion to Int.
+        guard projected.isFinite else { return spentCents }
+        if projected >= Double(Int.max) { return Int.max }
+        if projected <= -Double(Int.max) { return -Int.max }
+        return Int(projected)
     }
 }

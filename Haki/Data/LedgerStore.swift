@@ -41,8 +41,9 @@ enum LedgerStore {
     }
 
     /// Adds `SampleLedger` demo data: accounts with a year of balance history,
-    /// a few months of transactions, tracked bills and suggested budgets (only
-    /// for categories that don't already have one).
+    /// a few months of transactions and tracked bills (except bills already
+    /// tracked). Suggested budgets are added only to an empty Haki: no
+    /// accounts, transactions or budgets yet. `removeSampleData` takes it out again.
     static func loadSampleData(into context: ModelContext, now: Date = .now, calendar: Calendar = .current) {
         ensureDefaultCategories(in: context)
         let ledger = SampleLedger.generate(now: now, calendar: calendar)
@@ -51,15 +52,21 @@ enum LedgerStore {
         let sampleInstitutions = Set(ledger.accounts.map(\.institution))
         let existingInstitutions = Set(((try? context.fetch(FetchDescriptor<Account>())) ?? []).map(\.institution))
         guard sampleInstitutions.isDisjoint(with: existingInstitutions) else { return }
+        let isEmpty = !hasUserData(in: context)
         let categories = allCategories(in: context)
         var categoryBySeed: [String: TransactionCategory] = [:]
         for category in categories {
             if let seedKey = category.seedKey { categoryBySeed[seedKey] = category }
         }
 
-        for preset in DefaultCategories.all {
-            if let category = categoryBySeed[preset.seedKey], category.monthlyBudgetCents == nil {
-                category.monthlyBudgetCents = preset.suggestedBudgetCents
+        var record = SampleDataRecord.load()
+        // Never budget categories in someone's real setup they chose not to budget.
+        if isEmpty, !categories.contains(where: { $0.monthlyBudgetCents != nil }) {
+            for preset in DefaultCategories.all {
+                if let category = categoryBySeed[preset.seedKey], let suggested = preset.suggestedBudgetCents {
+                    category.monthlyBudgetCents = suggested
+                    record.budgetSeedKeys.insert(preset.seedKey)
+                }
             }
         }
 
@@ -94,13 +101,49 @@ enum LedgerStore {
             transaction.category = spec.categorySeedKey.flatMap { categoryBySeed[$0] }
         }
 
-        for spec in ledger.recurring {
+        // Bills aren't tied to the demo accounts, so they outlive them; don't
+        // add a second copy of one that's still tracked.
+        let trackedKeys = Set(((try? context.fetch(FetchDescriptor<RecurringItem>())) ?? []).map(\.merchantKey))
+        for spec in ledger.recurring where !trackedKeys.contains(spec.merchantKey) {
             let item = RecurringItem(name: spec.name, merchantKey: spec.merchantKey, amountCents: spec.amountCents,
                                      frequency: spec.frequency, anchorDate: spec.anchor, calendar: calendar)
             context.insert(item)
             item.category = spec.categorySeedKey.flatMap { categoryBySeed[$0] }
+            record.billIDs.insert(item.id.uuidString)
         }
         save(context)
+        record.save()
+    }
+
+    /// Whether any of these is demo data that `removeSampleData` would take out.
+    static func hasSampleData(accounts: [Account], bills: [RecurringItem], categories: [TransactionCategory]) -> Bool {
+        let institutions = SampleLedger.institutions
+        if accounts.contains(where: { institutions.contains($0.institution) }) { return true }
+        let record = SampleDataRecord.load()
+        guard !record.isEmpty else { return false }
+        return bills.contains { record.billIDs.contains($0.id.uuidString) }
+            || categories.contains { record.hasSuggestedBudget($0) }
+    }
+
+    /// Takes out what `loadSampleData` added: the demo accounts with their
+    /// transactions and balance history, the demo bills, and the suggested
+    /// budgets that are still at the suggested amount.
+    static func removeSampleData(in context: ModelContext) {
+        let institutions = SampleLedger.institutions
+        for account in (try? context.fetch(FetchDescriptor<Account>())) ?? [] where institutions.contains(account.institution) {
+            // Transactions and balance snapshots cascade.
+            context.delete(account)
+        }
+
+        let record = SampleDataRecord.load()
+        for item in (try? context.fetch(FetchDescriptor<RecurringItem>())) ?? [] where record.billIDs.contains(item.id.uuidString) {
+            context.delete(item)
+        }
+        for category in allCategories(in: context) where record.hasSuggestedBudget(category) {
+            category.monthlyBudgetCents = nil
+        }
+        save(context)
+        SampleDataRecord.clear()
     }
 
     /// Deletes every account, transaction, bill, rule and category, then
@@ -113,7 +156,50 @@ enum LedgerStore {
         deleteAll(Account.self, in: context)
         deleteAll(TransactionCategory.self, in: context)
         save(context)
+        SampleDataRecord.clear()
         ensureDefaultCategories(in: context)
+    }
+
+    /// What `loadSampleData` added outside the demo accounts (which their
+    /// institutions identify), so `removeSampleData` takes out only that.
+    private struct SampleDataRecord {
+        private static let billIDsKey = "sampleData.billIDs"
+        private static let budgetSeedKeysKey = "sampleData.budgetSeedKeys"
+
+        /// `RecurringItem.id`s, as UUID strings.
+        var billIDs: Set<String>
+        /// Seed keys of the categories given a suggested budget.
+        var budgetSeedKeys: Set<String>
+
+        var isEmpty: Bool { billIDs.isEmpty && budgetSeedKeys.isEmpty }
+
+        /// Whether the category still has the budget sample data gave it.
+        func hasSuggestedBudget(_ category: TransactionCategory) -> Bool {
+            guard let seedKey = category.seedKey, budgetSeedKeys.contains(seedKey),
+                  let budget = category.monthlyBudgetCents
+            else { return false }
+            return budget == DefaultCategories.category(seedKey: seedKey)?.suggestedBudgetCents
+        }
+
+        static func load() -> SampleDataRecord {
+            let defaults = UserDefaults.standard
+            return SampleDataRecord(
+                billIDs: Set(defaults.stringArray(forKey: billIDsKey) ?? []),
+                budgetSeedKeys: Set(defaults.stringArray(forKey: budgetSeedKeysKey) ?? [])
+            )
+        }
+
+        func save() {
+            let defaults = UserDefaults.standard
+            defaults.set(billIDs.sorted(), forKey: Self.billIDsKey)
+            defaults.set(budgetSeedKeys.sorted(), forKey: Self.budgetSeedKeysKey)
+        }
+
+        static func clear() {
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: billIDsKey)
+            defaults.removeObject(forKey: budgetSeedKeysKey)
+        }
     }
 
     // MARK: Transactions

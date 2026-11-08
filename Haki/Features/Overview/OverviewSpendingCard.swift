@@ -3,8 +3,9 @@
 //  Haki
 //
 //  "Spending this month": the headline number, how it compares with the
-//  same point last month, and a cumulative chart of both months against the
-//  total budget.
+//  same point last month, and a cumulative chart of both months. With
+//  budgets, spending in the budgeted categories is measured against the
+//  total budget, as on the Budgets screen.
 //
 
 import Charts
@@ -113,6 +114,9 @@ struct OverviewSpendingCard: View {
         if snapshot.lastMonthHasSpending {
             OverviewLegendItem(title: "Last month", color: .hakiComparison, dash: [5, 4])
         }
+        if snapshot.hasUnbudgetedSpending {
+            OverviewLegendItem(title: "In budgets", color: .orange, dash: OverviewSpendingChart.budgetedDash)
+        }
         if snapshot.hasBudgets {
             OverviewLegendItem(title: "Budget", color: .secondary, dash: [1, 4])
         }
@@ -120,16 +124,27 @@ struct OverviewSpendingCard: View {
 
     // MARK: Budget
 
+    /// Budgeted spending against the total budget. Spending in categories
+    /// without a budget doesn't count, as on the Budgets screen.
     private var budgetSummary: some View {
-        let remaining = snapshot.totalBudgetCents - snapshot.spentCents
+        let remaining = snapshot.totalBudgetCents - snapshot.budgetedSpentCents
         let isOver = remaining < 0
-        return Label {
-            Text(budgetText(remaining: remaining))
-        } icon: {
-            Image(systemName: isOver ? "exclamationmark.triangle.fill" : "target")
+        return VStack(alignment: .leading, spacing: 4) {
+            Label {
+                Text(budgetText(remaining: remaining))
+            } icon: {
+                Image(systemName: isOver ? "exclamationmark.triangle.fill" : "target")
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(isOver ? Color.hakiNegative : Color.secondary)
+            if snapshot.unbudgetedSpentCents > 0 {
+                Text("Plus \(Money.format(snapshot.unbudgetedSpentCents, showsCents: false)) spent outside your budgets")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .font(.subheadline.weight(.medium))
-        .foregroundStyle(isOver ? Color.hakiNegative : Color.secondary)
+        .accessibilityElement(children: .combine)
     }
 
     private func budgetText(remaining: Int) -> String {
@@ -138,7 +153,7 @@ struct OverviewSpendingCard: View {
         }
         let left = Money.format(remaining, showsCents: false)
         let total = Money.format(snapshot.totalBudgetCents, showsCents: false)
-        return "\(left) left of \(total) budget"
+        return "\(left) left of \(total) budgeted"
     }
 }
 
@@ -146,13 +161,19 @@ struct OverviewSpendingCard: View {
 
 /// Cumulative spending by day: this month through today (solid, accent) and
 /// all of last month (dashed, gray), with the total budget as a dotted rule.
+/// When some spending has no budget, spending in the budgeted categories
+/// (dash-dot, orange) is the line to read against the rule.
 private struct OverviewSpendingChart: View {
     let snapshot: OverviewSnapshot
+
+    /// The dash-dot pattern of the budgeted-categories line, shared with the legend.
+    static let budgetedDash: [CGFloat] = [6, 4, 0.5, 4]
 
     var body: some View {
         Chart {
             lastMonthMarks
             thisMonthMarks
+            budgetedMarks
             todayMark
             budgetMark
         }
@@ -223,6 +244,24 @@ private struct OverviewSpendingChart: View {
         }
     }
 
+    /// Spending in budgeted categories only. Without unbudgeted spending
+    /// it's the same as this month's line, so it isn't drawn.
+    @ChartContentBuilder
+    private var budgetedMarks: some ChartContent {
+        if snapshot.hasUnbudgetedSpending {
+            ForEach(snapshot.budgetedDaily) { point in
+                LineMark(
+                    x: .value("Day", point.day),
+                    y: .value("Spent", dollars(point.cents)),
+                    series: .value("Period", "In budgets")
+                )
+                .foregroundStyle(Color.orange)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: Self.budgetedDash))
+                .interpolationMethod(.monotone)
+            }
+        }
+    }
+
     @ChartContentBuilder
     private var todayMark: some ChartContent {
         if let latest = snapshot.thisMonthDaily.last {
@@ -266,7 +305,8 @@ private struct OverviewSpendingChart: View {
     private var yDomain: ClosedRange<Double> {
         let thisMonth = snapshot.thisMonthDaily.map { $0.cents }
         let lastMonth = snapshot.lastMonthDaily.map { $0.cents }
-        let values = thisMonth + lastMonth + [snapshot.totalBudgetCents]
+        let budgeted: [Int] = snapshot.hasUnbudgetedSpending ? snapshot.budgetedDaily.map { $0.cents } : []
+        let values = thisMonth + lastMonth + budgeted + [snapshot.totalBudgetCents]
         let highest = dollars(values.max() ?? 0)
         let lowest = dollars(min(0, values.min() ?? 0))
         // Headroom for the "Budget" label; at least $10 so an empty month isn't flat at the top.
@@ -316,7 +356,9 @@ private struct OverviewSpendingChart: View {
             parts.append("Last month, \(Money.format(snapshot.lastMonthSameDayCents)) by the same day.")
         }
         if snapshot.hasBudgets {
-            parts.append("Monthly budget, \(Money.format(snapshot.totalBudgetCents)).")
+            let budgeted = Money.format(snapshot.budgetedSpentCents)
+            let budget = Money.format(snapshot.totalBudgetCents)
+            parts.append("Budgeted categories, \(budgeted) spent of a \(budget) monthly budget.")
         }
         return parts.joined(separator: " ")
     }
