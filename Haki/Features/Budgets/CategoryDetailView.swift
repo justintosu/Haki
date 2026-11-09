@@ -287,7 +287,7 @@ struct CategoryDetailView: View {
                     value: data.averageMonthCount == 0 ? "—" : Money.format(data.averageCents, showsCents: false)
                 )
                 CategoryDetailStat(
-                    title: data.isCurrentMonth ? "So far vs. average" : "Compared with average",
+                    title: comparisonTitle(data),
                     value: comparisonText(data)
                 )
             }
@@ -307,10 +307,19 @@ struct CategoryDetailView: View {
         "Nothing \(valueNoun(data.kind)) in \(category.name) in the last 6 months."
     }
 
-    /// "$45 below" / "$30 above" / "About average".
+    private func comparisonTitle(_ data: CategoryDetailData) -> String {
+        guard data.isCurrentMonth else { return "Compared with average" }
+        return data.projectedCents != nil ? "Projected vs. average" : "So far vs. average"
+    }
+
+    /// "$45 below" / "$30 above" / "About average". In the current month a
+    /// budgeted category compares its month-end projection (the figure in the
+    /// budget card above) with the average of earlier, full months, rather
+    /// than a partly finished month.
     private func comparisonText(_ data: CategoryDetailData) -> String {
         guard data.averageCents != 0 else { return "—" }
-        let difference = data.amountCents - data.averageCents
+        let compared = data.isCurrentMonth ? (data.projectedCents ?? data.amountCents) : data.amountCents
+        let difference = compared - data.averageCents
         if abs(difference) < 100 { return "About average" }
         let amount = Money.format(abs(difference), showsCents: false)
         return difference > 0 ? "\(amount) above" : "\(amount) below"

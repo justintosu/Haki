@@ -148,7 +148,7 @@ private struct OverviewBudgetRow: View {
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
-            BudgetBar(progress: line.progress, tint: Color(hex: line.category.colorHex), monthFraction: monthFraction)
+            BudgetBar(progress: line.progress, tint: Color(hex: line.category.colorHex), monthFraction: monthFraction, pace: line.pace)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

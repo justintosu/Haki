@@ -13,6 +13,8 @@ struct OverviewBudgetLine: Identifiable {
     let id: UUID
     let category: TransactionCategory
     let progress: BudgetProgress
+    /// The pace its category screen shows (`SpendingAnalytics.categoryPace`).
+    let pace: BudgetPace
 }
 
 /// This month's spending in one category, or in no category.
@@ -187,11 +189,16 @@ struct OverviewSnapshot {
         }
         budgetLines = budgeted
             .map { category in
-                OverviewBudgetLine(
+                let progress = BudgetProgress(budgetCents: category.monthlyBudgetCents ?? 0,
+                                              spentCents: spentByCategory[category.ledgerID] ?? 0)
+                // `recent` covers last month too, which the projection reads.
+                return OverviewBudgetLine(
                     id: category.id,
                     category: category,
-                    progress: BudgetProgress(budgetCents: category.monthlyBudgetCents ?? 0,
-                                             spentCents: spentByCategory[category.ledgerID] ?? 0)
+                    progress: progress,
+                    pace: SpendingAnalytics.categoryPace(
+                        progress, entries: recent, categoryID: category.ledgerID,
+                        month: month, asOf: now, calendar: calendar)
                 )
             }
             .sorted { lhs, rhs in

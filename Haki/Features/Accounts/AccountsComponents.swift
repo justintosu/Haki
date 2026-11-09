@@ -304,8 +304,8 @@ struct AccountsHistoryChart: View {
         }
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                // A date near the end (the 3M "Nov 1") ends at its tick, so it
-                // doesn't run into the value labels and truncate to "No…".
+                // Centered on their dates; one near an edge is pinned to its
+                // tick so it doesn't run into the value labels ("No…").
                 AxisValueLabel(format: dateFormat, anchor: ChartAxis.dateLabelAnchor(for: value, in: xDomain))
             }
         }

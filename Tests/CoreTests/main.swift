@@ -200,6 +200,29 @@ suite("SpendingAnalytics.projectedSpending") {
                 810_000, "falls back to a straight line")
 }
 
+suite("SpendingAnalytics.categoryPace") {
+    let november = MonthInterval(year: 2026, month: 11)
+    let asOf = day(2026, 11, 9)
+    // Groceries: $25 a day last month ($775), $25 a day for 9 days this month ($225 of $600).
+    var entries: [Entry] = []
+    for d in 1...31 { entries.append(Entry(ledgerDate: day(2026, 10, d), ledgerAmountCents: 2_500, ledgerCategoryID: "groceries")) }
+    for d in 1...9 { entries.append(Entry(ledgerDate: day(2026, 11, d), ledgerAmountCents: 2_500, ledgerCategoryID: "groceries")) }
+    // Rent: $2,150 on the 1st, both months, on a $2,200 budget.
+    entries.append(Entry(ledgerDate: day(2026, 10, 1), ledgerAmountCents: 215_000, ledgerCategoryID: "rent"))
+    entries.append(Entry(ledgerDate: day(2026, 11, 1), ledgerAmountCents: 215_000, ledgerCategoryID: "rent"))
+
+    let groceries = BudgetProgress(budgetCents: 60_000, spentCents: 22_500)
+    expectEqual(groceries.pace(elapsedDays: 9, daysInMonth: 30), .onTrack, "straight line: under half the budget")
+    expectEqual(SpendingAnalytics.categoryPace(groceries, entries: entries, categoryID: "groceries", month: november, asOf: asOf, calendar: testCalendar),
+                .aheadOfPace, "projected $775 on a $600 budget")
+    let rent = BudgetProgress(budgetCents: 220_000, spentCents: 215_000)
+    expectEqual(rent.pace(elapsedDays: 9, daysInMonth: 30), .aheadOfPace, "straight line flags rent paid on the 1st")
+    expectEqual(SpendingAnalytics.categoryPace(rent, entries: entries, categoryID: "rent", month: november, asOf: asOf, calendar: testCalendar),
+                .onTrack, "rent doesn't repeat, so the projection stays within budget")
+    expectEqual(SpendingAnalytics.categoryPace(groceries, entries: entries, categoryID: "groceries", month: november.previous, asOf: asOf, calendar: testCalendar),
+                .onTrack, "past months use the straight line")
+}
+
 suite("BudgetProgress") {
     let progress = BudgetProgress(budgetCents: 30_000, spentCents: 12_000)
     expectEqual(progress.remainingCents, 18_000)

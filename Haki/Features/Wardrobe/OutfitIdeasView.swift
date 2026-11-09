@@ -156,6 +156,11 @@ struct OutfitIdeasView: View {
             .padding(.vertical, 2)
         }
         .scrollIndicators(.hidden)
+        // Let the chips scroll out to the card's edge instead of being clipped
+        // at its 16 pt inner padding. The -16 cancels .hakiCard()'s padding,
+        // and the content margin keeps the first chip lined up with the fields.
+        .contentMargins(.horizontal, 16, for: .scrollContent)
+        .padding(.horizontal, -16)
     }
 
     // MARK: Status

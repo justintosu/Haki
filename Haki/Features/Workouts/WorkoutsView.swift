@@ -14,6 +14,10 @@ import SwiftData
 import SwiftUI
 
 struct WorkoutsView: View {
+    /// The app's accent from the asset catalog. Unlike `.accentColor` it isn't
+    /// grayed while a popover is open, so these tiles match the Hevy tile.
+    private static let libraryTint = Color("AccentColor")
+
     @Environment(\.modelContext) private var modelContext
     @Environment(HevySyncService.self) private var hevy
     @AppStorage(HealthSettings.weightUnitKey) private var weightUnitRaw = ""
@@ -131,8 +135,14 @@ struct WorkoutsView: View {
             Button {
                 routineSheet = .new
             } label: {
-                Label("New routine", systemImage: "plus")
+                // The same 36 pt tile and spacing as the routine rows, so
+                // "New routine" starts where the routine names do.
+                HStack(spacing: 12) {
+                    HevyIconTile(systemImage: "plus", tint: Self.libraryTint)
+                    Text("New routine")
+                }
             }
+            .accessibilityLabel("New routine")
         } header: {
             Text("Routines")
         } footer: {
@@ -184,7 +194,7 @@ struct WorkoutsView: View {
                 // The same tile and spacing as the Hevy row below, so both
                 // titles (and their separators) start at the same x.
                 HStack(spacing: 12) {
-                    HevyIconTile(systemImage: "dumbbell.fill", tint: .accentColor)
+                    HevyIconTile(systemImage: "dumbbell.fill", tint: Self.libraryTint)
                     Text("Exercises")
                         .foregroundStyle(Color.primary)
                 }

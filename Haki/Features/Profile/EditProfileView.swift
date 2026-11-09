@@ -147,7 +147,9 @@ struct EditProfileView: View {
                 avatar
                 HStack(spacing: 12) {
                     PhotosPicker(selection: $photoItem, matching: .images) {
+                        // Compact: in a Form row a Label's icon gets a wide column.
                         Label("Change photo", systemImage: "camera.fill")
+                            .labelStyle(CompactLabelStyle(spacing: 6))
                     }
                     .buttonStyle(.bordered)
 
@@ -158,6 +160,7 @@ struct EditProfileView: View {
                             photoItem = nil
                         } label: {
                             Label("Undo", systemImage: "arrow.uturn.backward")
+                                .labelStyle(CompactLabelStyle(spacing: 6))
                         }
                         .buttonStyle(.bordered)
                         .accessibilityLabel("Keep your current photo")

@@ -265,6 +265,41 @@ struct WardrobeItemTile: View {
     }
 }
 
+/// A grid card's name (up to two lines) over its one-line subtitle. Always as
+/// tall as two name lines plus the subtitle, so every card in a grid row is
+/// the same height; a short name leaves its spare space below the subtitle,
+/// not between the name and the subtitle.
+private struct WardrobeCardCaption: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            // Sizing placeholder: two name lines and a subtitle line, same fonts.
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: "A\nA")
+                    .font(.subheadline.weight(.semibold))
+                Text(verbatim: "A")
+                    .font(.caption)
+            }
+            .hidden()
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// A piece in a grid: tile, name and how often it's been worn.
 struct WardrobeItemCard: View {
     let item: ClothingItem
@@ -288,19 +323,7 @@ struct WardrobeItemCard: View {
                             .accessibilityHidden(true)
                     }
                 }
-            VStack(alignment: .leading, spacing: 2) {
-                // Reserve two lines so every card in a grid row is the same height.
-                Text(item.name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2, reservesSpace: true)
-                    .multilineTextAlignment(.leading)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            WardrobeCardCaption(title: item.name, subtitle: subtitle)
         }
         .padding(10)
         .background(Color.hakiCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -451,19 +474,7 @@ struct WardrobeOutfitCard: View {
                             .accessibilityHidden(true)
                     }
                 }
-            VStack(alignment: .leading, spacing: 2) {
-                // Reserve two lines so every card in a grid row is the same height.
-                Text(outfit.name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2, reservesSpace: true)
-                    .multilineTextAlignment(.leading)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            WardrobeCardCaption(title: outfit.name, subtitle: subtitle)
         }
         .padding(10)
         .background(Color.hakiCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))

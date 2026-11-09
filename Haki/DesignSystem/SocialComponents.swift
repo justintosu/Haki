@@ -83,15 +83,16 @@ struct TickerChip: View {
     var isVerifiedHolder: Bool = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 7) {
             Text("$\(ticker)")
                 .font(.subheadline.weight(.semibold))
             if isVerifiedHolder {
-                // Spelled out, not just a seal, so it isn't read as a "verified
-                // ticker" mark.
+                // Spelled out, not just a seal, and the seal hugs "Holds" so the
+                // pair reads as one badge rather than a "verified ticker" mark.
                 Label("Holds", systemImage: "checkmark.seal.fill")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(CompactLabelStyle(spacing: 2))
                     .font(.caption.weight(.semibold))
+                    .imageScale(.small)
                     .accessibilityLabel("Author holds this stock")
             }
         }

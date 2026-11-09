@@ -311,8 +311,13 @@ struct ComposePostView: View {
     @ViewBuilder private var portfolioSection: some View {
         if let shared = sharedPortfolio, !shared.holdings.isEmpty {
             Section {
+                // The card on its own, as in the feed: no white Form row framing
+                // it. The card color under it keeps the light accent tint the
+                // same as on the posted card.
                 PostPortfolioAttachmentView(portfolio: shared)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+                    .background(Color.hakiCardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
             } header: {
                 Text("Preview")
             } footer: {

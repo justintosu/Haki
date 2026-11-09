@@ -348,11 +348,7 @@ private struct MenuPlaceHeaderCard: View {
                     Text(place.name)
                         .font(.title2.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
-                    if let detail {
-                        Text(detail)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                    detailView
                     if let address = place.address {
                         Text(address)
                             .font(.subheadline)
@@ -366,8 +362,8 @@ private struct MenuPlaceHeaderCard: View {
         .hakiCard()
     }
 
-    /// "Restaurant · Bowls and salads · 450 m away"
-    private var detail: String? {
+    /// ["Restaurant", "Bowls and salads"]
+    private var descriptorParts: [String] {
         var parts: [String] = []
         if let category = place.categoryTitle {
             parts.append(category)
@@ -378,12 +374,45 @@ private struct MenuPlaceHeaderCard: View {
                 parts.append(trimmed)
             }
         }
-        if let distance = place.distanceText {
-            // Non-breaking spaces keep "500 ft away" on one line; the " · " separators can still wrap.
-            let unbreakable = distance.replacingOccurrences(of: " ", with: "\u{00A0}")
-            parts.append("\(unbreakable)\u{00A0}away")
-        }
+        return parts
+    }
+
+    /// "500 ft away", with non-breaking spaces so it stays on one line.
+    private var distancePart: String? {
+        guard let distance = place.distanceText else { return nil }
+        return distance.replacingOccurrences(of: " ", with: "\u{00A0}") + "\u{00A0}away"
+    }
+
+    /// "Restaurant · Bowls and salads · 450 m away"
+    private var detail: String? {
+        let parts = descriptorParts + [distancePart].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// One line when it fits; otherwise the distance gets its own line, so the
+    /// first line never ends in a stray " ·".
+    @ViewBuilder
+    private var detailView: some View {
+        if let detail {
+            Group {
+                if let distancePart, !descriptorParts.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        Text(detail)
+                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(descriptorParts.joined(separator: " · "))
+                            Text(distancePart)
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(detail)
+                } else {
+                    Text(detail)
+                }
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
     }
 
     private var actions: some View {

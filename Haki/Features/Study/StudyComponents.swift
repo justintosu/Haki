@@ -200,8 +200,17 @@ enum StudyFormat {
         if note.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !lines.isEmpty {
             lines.removeFirst()
         }
-        // A middle dot between lines, so separate lines don't run together.
-        let text = lines.prefix(4).map { plainLine($0) }.filter { !$0.isEmpty }.joined(separator: " · ")
+        // A middle dot between lines, so separate lines don't run together. After
+        // a line that already ends in punctuation it's just a space
+        // ("energy. Photosynthesis…", not "energy. · Photosynthesis…").
+        let parts = lines.prefix(4).map { plainLine($0) }.filter { !$0.isEmpty }
+        var text = ""
+        for part in parts {
+            if let last = text.last {
+                text += ".!?:;…".contains(last) ? " " : " · "
+            }
+            text += part
+        }
         return String(text.prefix(160))
     }
 

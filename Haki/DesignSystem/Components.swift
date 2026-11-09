@@ -94,7 +94,9 @@ struct TransactionRow: View {
                 }
                 subtitleLine
             }
-            Spacer(minLength: 8)
+            // Fills the row instead of a Spacer, which in HStack(spacing: 12)
+            // would add the stack spacing on both sides and cut names short.
+            .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 2) {
                 TransactionAmountText(cents: transaction.amountCents, isExcluded: transaction.isExcluded)
                     .font(.body.weight(.medium))
@@ -105,8 +107,14 @@ struct TransactionRow: View {
                         .accessibilityLabel("Needs review")
                 }
             }
+            // The amount never truncates; the merchant gives way.
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.vertical, 2)
+        // In a List, start the separator at the merchant (icon 36 + spacing 12)
+        // whether the icon is an emoji Text or the uncategorized "?" Image;
+        // otherwise List aligns it to the first Text it finds.
+        .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] + 36 + 12 }
         .accessibilityElement(children: .combine)
     }
 

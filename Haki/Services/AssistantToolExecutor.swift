@@ -677,7 +677,7 @@ struct AssistantToolExecutor {
         if budgeted.isEmpty {
             notes.append("No budgets set yet. Budgets are set per category in the Budgets tab.")
         } else {
-            result["budgets"] = budgetLines(budgeted, spentByID: spentByID, isCurrent: isCurrent, elapsed: elapsed, days: days)
+            result["budgets"] = budgetLines(budgeted, spentByID: spentByID, all: all, month: month, isCurrent: isCurrent, elapsed: elapsed, days: days)
             result["overall"] = .object(overallBudget(
                 budgeted, spentByID: spentByID, all: all, month: month, isCurrent: isCurrent, elapsed: elapsed, days: days
             ))
@@ -696,7 +696,9 @@ struct AssistantToolExecutor {
         return withNotes(result, notes)
     }
 
-    private func budgetLines(_ budgeted: [TransactionCategory], spentByID: [String: Int], isCurrent: Bool, elapsed: Int, days: Int) -> JSONValue {
+    /// Each budget with the same pace as its category screen
+    /// (`SpendingAnalytics.categoryPace`; `all` includes last month).
+    private func budgetLines(_ budgeted: [TransactionCategory], spentByID: [String: Int], all: [TransactionRecord], month: MonthInterval, isCurrent: Bool, elapsed: Int, days: Int) -> JSONValue {
         let remainingDays = max(1, days - elapsed + 1)
         let lines = budgeted.map { category -> [String: JSONValue] in
             let progress = BudgetProgress(budgetCents: category.monthlyBudgetCents ?? 0, spentCents: spentByID[category.ledgerID] ?? 0)
@@ -706,7 +708,8 @@ struct AssistantToolExecutor {
                 "spent": J.money(progress.spentCents),
                 "left": J.money(progress.remainingCents),
                 "used_pct": J.percent(progress.fractionUsed),
-                "status": .string(J.paceName(progress.pace(elapsedDays: elapsed, daysInMonth: days))),
+                "status": .string(J.paceName(SpendingAnalytics.categoryPace(
+                    progress, entries: all, categoryID: category.ledgerID, month: month, asOf: now, calendar: calendar))),
             ]
             if isCurrent, progress.remainingCents > 0 {
                 line["left_per_day"] = J.money(progress.remainingCents / remainingDays)

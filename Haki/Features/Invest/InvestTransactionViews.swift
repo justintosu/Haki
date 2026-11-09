@@ -125,10 +125,9 @@ struct InvestTransactionRow: View {
                 Text(title(kind))
                     .font(.body.weight(.medium))
                     .lineLimit(2)
-                Text(subtitle(kind))
+                subtitleView(kind)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
@@ -157,7 +156,35 @@ struct InvestTransactionRow: View {
         return kind.title
     }
 
-    private func subtitle(_ kind: InvestTransactionKind) -> String {
+    /// One line when it all fits; otherwise the account goes on its own line,
+    /// so no line ends in a dangling " ·".
+    @ViewBuilder
+    private func subtitleView(_ kind: InvestTransactionKind) -> some View {
+        let details = detailsText(kind)
+        let account = accountName.flatMap { $0.isEmpty ? nil : $0 }
+        if let details, let account {
+            let full = details + " · " + account
+            ViewThatFits(in: .horizontal) {
+                Text(full)
+                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(details)
+                        .lineLimit(2)
+                    Text(account)
+                        .lineLimit(1)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(full)
+        } else {
+            Text(details ?? account ?? kind.title)
+                .lineLimit(2)
+        }
+    }
+
+    /// Kind (unless the title already names it), ticker and "quantity × price";
+    /// nil when none apply.
+    private func detailsText(_ kind: InvestTransactionKind) -> String? {
         // The title often already names the kind ("Buy Vanguard…", "Dividend: Apple Inc.",
         // "Account maintenance fee"); don't spend the line repeating it. Whole words only,
         // so "Coffee Holdings" doesn't count as naming "Fee".
@@ -173,10 +200,7 @@ struct InvestTransactionRow: View {
            let price = transaction.price, price.isFinite {
             parts.append("\(InvestFormat.quantity(quantity)) × \(InvestFormat.price(price, currency: transactionCurrency))")
         }
-        if let accountName, !accountName.isEmpty {
-            parts.append(accountName)
-        }
-        return parts.isEmpty ? kind.title : parts.joined(separator: " · ")
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// Money in as "+$X", money out as "$X".

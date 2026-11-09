@@ -17,6 +17,9 @@ struct BudgetsCategoryLine: Identifiable {
     let cents: Int
     /// The monthly budget, or 0 when the category has none.
     let budgetCents: Int
+    /// Budgeted lines: the pace their category screen shows
+    /// (`SpendingAnalytics.categoryPace`). nil for the other lines.
+    var pace: BudgetPace? = nil
 
     var id: UUID { category.id }
 
@@ -95,6 +98,9 @@ struct BudgetsSnapshot {
             by: { $0.ledgerCategoryID ?? "" }
         )
 
+        // Last month and this one, which each budgeted line's projected pace reads.
+        let paceStart = month.previous.start(in: calendar)
+        let paceEntries = transactions.filter { $0.ledgerDate >= paceStart && $0.ledgerDate < interval.end }
         var budgeted: [BudgetsCategoryLine] = []
         var unbudgeted: [BudgetsCategoryLine] = []
         var income: [BudgetsCategoryLine] = []
@@ -104,7 +110,11 @@ struct BudgetsSnapshot {
                 let spent = spentByID[category.ledgerID] ?? 0
                 if category.hasBudget {
                     let budget = category.monthlyBudgetCents ?? 0
-                    budgeted.append(BudgetsCategoryLine(category: category, cents: spent, budgetCents: budget))
+                    let pace = SpendingAnalytics.categoryPace(
+                        BudgetProgress(budgetCents: budget, spentCents: spent),
+                        entries: paceEntries, categoryID: category.ledgerID,
+                        month: month, asOf: now, calendar: calendar)
+                    budgeted.append(BudgetsCategoryLine(category: category, cents: spent, budgetCents: budget, pace: pace))
                 } else if spent != 0 {
                     unbudgeted.append(BudgetsCategoryLine(category: category, cents: spent, budgetCents: 0))
                 }

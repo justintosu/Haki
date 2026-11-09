@@ -156,6 +156,30 @@ nonisolated enum SpendingAnalytics {
         return BudgetProgress(budgetCents: 0, spentCents: spentSoFar).projectedCents(elapsedDays: elapsed, daysInMonth: days)
     }
 
+    /// One budgeted category's pace, as its own page shows it. In the current
+    /// month it's adjusted by the category's month-end projection
+    /// (`projectedSpending`, never below what's spent; see
+    /// `BudgetProgress.pace(elapsedDays:daysInMonth:projectedCents:)`); other
+    /// months use the straight-line pace. `entries` may hold any categories but
+    /// must include last month, which the projection reads.
+    static func categoryPace<E: LedgerEntry>(
+        _ progress: BudgetProgress,
+        entries: [E],
+        categoryID: String,
+        month: MonthInterval,
+        asOf now: Date = .now,
+        calendar: Calendar = .current
+    ) -> BudgetPace {
+        let elapsed = month.elapsedDays(asOf: now, calendar: calendar)
+        let days = month.numberOfDays(in: calendar)
+        guard month == MonthInterval.current(calendar: calendar, now: now), elapsed > 0 else {
+            return progress.pace(elapsedDays: elapsed, daysInMonth: days)
+        }
+        let own = entries.filter { $0.ledgerCategoryID == categoryID }
+        let projected = max(progress.spentCents, projectedSpending(own, month: month, asOf: now, calendar: calendar))
+        return progress.pace(elapsedDays: elapsed, daysInMonth: days, projectedCents: projected)
+    }
+
     /// Average of `monthlyTotals` over months that have any activity. Returns 0 if none.
     static func averageMonthlySpending<E: LedgerEntry>(
         _ entries: [E],

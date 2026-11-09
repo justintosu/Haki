@@ -28,7 +28,7 @@ nonisolated enum MealType: String, CaseIterable, Codable, Hashable, Identifiable
         switch self {
         case .breakfast: "sunrise"
         case .lunch: "sun.max"
-        case .dinner: "moon.stars"
+        case .dinner: "moon"
         case .snack: "carrot"
         }
     }

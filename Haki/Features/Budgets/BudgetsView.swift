@@ -301,7 +301,8 @@ private struct BudgetsBudgetRow: View {
                 BudgetBar(
                     progress: line.progress,
                     tint: Color(hex: line.category.colorHex),
-                    monthFraction: monthFraction
+                    monthFraction: monthFraction,
+                    pace: line.pace
                 )
                 Text(spentText)
                     .font(.caption)
