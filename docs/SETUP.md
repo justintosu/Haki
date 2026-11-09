@@ -9,7 +9,8 @@ credentials that only you can create, in dashboards only you can sign in to. Unt
   a few emails an hour,
 - "Continue with Google" and "Sign in with Apple" show an error,
 - "Connect a brokerage" says brokerage connections aren't set up yet,
-- the Health tab's meal photo estimates and restaurant menus say AI food features aren't set up yet.
+- the Health tab's meal photo estimates and restaurant menus say AI food features aren't set up yet,
+- Ask Haki, clothing auto-tags, outfit ideas and AI flashcards say Haki's AI isn't set up yet.
 
 ## 1. Allow the app's redirect URL (2 minutes)
 
@@ -123,6 +124,22 @@ fallback) before telling the person.
 Restaurant menus come from public web pages and Claude's estimates, and the app labels them that
 way. For allergies, people should always check with the restaurant.
 
+### Ask Haki, wardrobe and flashcards (the `haki-ai` function)
+
+The same `ANTHROPIC_API_KEY` secret powers them. Optional secrets:
+
+| Name | Default | What it does |
+|---|---|---|
+| `HAKI_AI_MODEL` | `claude-opus-5-5` | The Claude model for the assistant, clothing tags, outfit ideas and flashcards. |
+| `HAKI_AI_DAILY_CHAT` | `150` | Assistant requests per person per day. One question can take a few requests: each round of on-phone lookups counts. |
+| `HAKI_AI_DAILY_CLOTHING` | `60` | Clothing photo auto-tags per day. |
+| `HAKI_AI_DAILY_OUTFITS` | `20` | Outfit-idea requests per day. |
+| `HAKI_AI_DAILY_FLASHCARDS` | `20` | AI decks made from notes per day. |
+
+Rough costs at Opus 5.5 prices: a simple assistant question is a few cents; one that needs several
+lookups or a web search can be 10–20 cents (the conversation prefix is cached between rounds,
+which helps). A clothing tag is about 1–2 cents, outfit ideas or a flashcard deck about 3–8 cents.
+
 ## 7. Hevy (nothing to set up on the server)
 
 Each person connects their own Hevy account in **Health → Hevy** with an API key from
@@ -133,9 +150,10 @@ stored in the iPhone's Keychain and the app talks to Hevy directly. Haki isn't a
 
 - **Free plan pausing:** Supabase pauses free projects after a week without activity. Restore it
   from the dashboard if the app suddenly can't sign in.
-- **Privacy model:** money data (transactions, budgets, accounts), the food log and workouts stay
-  on the device in SwiftData. Meal photos and descriptions are sent to the `food-ai` function and on
-  to Anthropic to be analyzed, and aren't stored by Haki.
+- **Privacy model:** money data (transactions, budgets, accounts), the food log, workouts, the
+  wardrobe, notes, flashcards and assistant chats stay on the device in SwiftData. Meal and clothing
+  photos, note text sent for flashcards, and the answers to the assistant's lookups are sent through
+  Haki's functions to Anthropic to be processed, and aren't stored by Haki.
   The server stores profiles, posts and brokerage holdings. Other users only ever see your
   portfolio as **percentages**, and only while *Share portfolio percentages* is on.
 - **Account deletion** (required by the App Store) is in **Profile → Settings → Delete account**. It

@@ -6,14 +6,16 @@ review queue for new transactions, and tracks category budgets, recurring bills 
 connects your brokerage read-only through Plaid and lets you share posts, trades and portfolio
 **percentages** with people you follow. Its Health tab estimates calories and protein from a photo
 of your meal, finds healthy options on nearby menus, and logs strength workouts (with optional
-Hevy sync).
+Hevy sync). The You tab adds a wardrobe and outfit board, notes with flashcard quizzes, and
+**Ask Haki**, an assistant that answers questions about your own data and makes recommendations.
 
-Money, food and workout data stay on the device. Your profile, posts and brokerage holdings live in
+Money, food, workout, wardrobe and notes data stay on the device. Your profile, posts and brokerage holdings live in
 your Haki account (Supabase). Sign in with Google, Apple or email.
 
 ## Features
 
-The app has five tabs: **Home**, **Feed**, **Invest**, **Health** and **Profile**.
+The app has five tabs: **Home**, **Feed**, **Invest**, **Health** and **You**. Every tab has an
+**Ask Haki** button.
 
 - **Home**: spending this month compared with last month as a running total, budget left, a review
   queue, upcoming bills, net worth, investments and cash flow. Shortcuts open **Transactions**,
@@ -44,8 +46,16 @@ The app has five tabs: **Home**, **Feed**, **Invest**, **Health** and **Profile*
 - **Health — workouts**: log sets, reps and weight with the previous session alongside, a rest
   timer, PR detection, routines, exercise history and weekly progress. Connect a **Hevy** account
   (Hevy Pro API key) to bring your Hevy workouts in and post workouts logged in Haki to Hevy.
-- **Profile**: your posts grid, followers and following, your shared portfolio (percentages), edit
-  profile, settings, sign out and delete account.
+- **You**: your profile (posts grid, followers and following, shared portfolio percentages, edit
+  profile), Activity and Settings, plus:
+  - **Wardrobe**: photograph pieces (the background is cut out on the phone), auto-tag them with
+    AI (type, colors, seasons, style), arrange outfits on a board by dragging and pinching, get AI
+    outfit ideas for an occasion and the weather, and track wears and cost per wear.
+  - **Notes & flashcards**: Markdown notes, decks made by hand or with AI from a note, and quizzes
+    (flip, type the answer, multiple choice) scheduled with spaced repetition.
+- **Ask Haki**: ask about your spending, budgets, bills, net worth, investments, food log,
+  workouts, notes, flashcards or wardrobe, or for recommendations. The app looks things up on the
+  phone only when a question needs them, sends just that to Claude, and shows what it looked at.
 
 ## Project layout
 
@@ -61,12 +71,15 @@ Haki/
                   settings and preview data
   DesignSystem/   Theme and shared views
   Services/       Supabase client, models, AuthService, SocialService, PortfolioService,
-                  FoodAIService, HevySyncService (+ Hevy client and Keychain)
+                  FoodAIService, HevySyncService (+ Hevy client and Keychain), HakiAIService,
+                  AssistantService and the assistant's on-device lookups
   Features/       Overview (Home), Transactions, Budgets, Recurring, Accounts, Settings,
-                  Auth, Social (Feed), Profile, Invest, Health, Food, Places, Workouts, Hevy
+                  Auth, Social (Feed), Profile, Invest, Health, Food, Places, Workouts, Hevy,
+                  You, Wardrobe, Study (notes and flashcards), Assistant
 Config/           Entitlements (Sign in with Apple) and Info.plist additions (haki:// URL scheme,
                   camera and location usage text)
-supabase/         Database migrations and Edge Functions (plaid, delete-account, food-ai)
+supabase/         Database migrations and Edge Functions (plaid, delete-account, food-ai, haki-ai)
+HakiUITests/      UI tests that tap through the app in the simulator (CI saves screenshots)
 Tests/CoreTests/  Unit tests for Haki/Core
 scripts/          test-core.sh (runs the tests), assets/make_icon.py (app icon)
 docs/SETUP.md     Backend setup: Google, Apple, email, Plaid, Anthropic (food AI)
@@ -106,7 +119,7 @@ see the money screens filled in.
 
 ## Backend
 
-The Supabase project **haki** hosts auth, the social database, image storage and three Edge Functions:
+The Supabase project **haki** hosts auth, the social database, image storage and four Edge Functions:
 
 - `plaid` creates Link tokens, exchanges public tokens, syncs holdings and trades, and removes
   connections.
@@ -116,6 +129,9 @@ The Supabase project **haki** hosts auth, the social database, image storage and
   items with prices, calories, protein and health tags). Menus are cached for 14 days and shared;
   each account has a daily limit (50 meal estimates, 15 new menu lookups). Meal photos aren't
   stored on the server.
+- `haki-ai` relays the Ask Haki conversation to Claude (with web search for outside information)
+  and declares the lookups the app can run on the phone; it also tags clothing photos, suggests
+  outfits and makes flashcards from a note. It stores nothing but daily request counts.
 
 Hevy sync runs on the device: the app calls Hevy's API directly with the person's own API key,
 kept in the Keychain, so workouts never pass through Haki's servers.
@@ -134,5 +150,7 @@ installed (macOS or Linux):
 scripts/test-core.sh
 ```
 
-CI (`.github/workflows/ci.yml`) runs those tests on Linux and builds the app for the iOS Simulator
-with Xcode on every push.
+CI (`.github/workflows/ci.yml`) runs those tests on Linux, builds the app for the iOS Simulator,
+and runs the UI tests on an iPhone simulator: the app starts in a test mode (`-HakiUITesting`:
+signed in as a sample user with sample data in memory and no network), the tests tap through
+every tab and main flow, and the screenshots are uploaded as the `ui-screenshots` artifact.
