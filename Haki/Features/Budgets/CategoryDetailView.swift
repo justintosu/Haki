@@ -319,7 +319,11 @@ struct CategoryDetailView: View {
     private func comparisonText(_ data: CategoryDetailData) -> String {
         guard data.averageCents != 0 else { return "—" }
         let compared = data.isCurrentMonth ? (data.projectedCents ?? data.amountCents) : data.amountCents
-        let difference = compared - data.averageCents
+        // Subtract the figures as they're shown (whole units, rounded half to
+        // even like Money.format(showsCents: false)), so "$677" against an
+        // average of "$769" reads "$92 below", not the $91.30 the cents give.
+        let shown: (Int) -> Int = { Int((Double($0) / 100).rounded(.toNearestOrEven)) * 100 }
+        let difference = shown(compared) - shown(data.averageCents)
         if abs(difference) < 100 { return "About average" }
         let amount = Money.format(abs(difference), showsCents: false)
         return difference > 0 ? "\(amount) above" : "\(amount) below"
