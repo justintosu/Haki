@@ -11,14 +11,30 @@
 		C1A0B0D0E0F0010203040502 /* LinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = C1A0B0D0E0F0010203040512 /* LinkKit */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		E2A0B0D0E0F0010203040501 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D0B6F5A53006CB710098F0A2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D0B6F5AC3006CB710098F0A2;
+			remoteInfo = Haki;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		D0B6F5AD3006CB710098F0A2 /* Haki.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Haki.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2A0B0D0E0F0010203040502 /* HakiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HakiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		D0B6F5AF3006CB710098F0A2 /* Haki */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Haki;
+			sourceTree = "<group>";
+		};
+		E2A0B0D0E0F0010203040503 /* HakiUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HakiUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +49,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E2A0B0D0E0F0010203040504 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -40,6 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				D0B6F5AF3006CB710098F0A2 /* Haki */,
+				E2A0B0D0E0F0010203040503 /* HakiUITests */,
 				D0B6F5AE3006CB710098F0A2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -48,6 +72,7 @@
 			isa = PBXGroup;
 			children = (
 				D0B6F5AD3006CB710098F0A2 /* Haki.app */,
+				E2A0B0D0E0F0010203040502 /* HakiUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -79,6 +104,29 @@
 			productReference = D0B6F5AD3006CB710098F0A2 /* Haki.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E2A0B0D0E0F0010203040505 /* HakiUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E2A0B0D0E0F0010203040509 /* Build configuration list for PBXNativeTarget "HakiUITests" */;
+			buildPhases = (
+				E2A0B0D0E0F0010203040506 /* Sources */,
+				E2A0B0D0E0F0010203040504 /* Frameworks */,
+				E2A0B0D0E0F0010203040507 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E2A0B0D0E0F0010203040508 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E2A0B0D0E0F0010203040503 /* HakiUITests */,
+			);
+			name = HakiUITests;
+			packageProductDependencies = (
+			);
+			productName = HakiUITests;
+			productReference = E2A0B0D0E0F0010203040502 /* HakiUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -91,6 +139,10 @@
 				TargetAttributes = {
 					D0B6F5AC3006CB710098F0A2 = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					E2A0B0D0E0F0010203040505 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = D0B6F5AC3006CB710098F0A2;
 					};
 				};
 			};
@@ -113,12 +165,20 @@
 			projectRoot = "";
 			targets = (
 				D0B6F5AC3006CB710098F0A2 /* Haki */,
+				E2A0B0D0E0F0010203040505 /* HakiUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		D0B6F5AB3006CB710098F0A2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E2A0B0D0E0F0010203040507 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +195,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E2A0B0D0E0F0010203040506 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E2A0B0D0E0F0010203040508 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D0B6F5AC3006CB710098F0A2 /* Haki */;
+			targetProxy = E2A0B0D0E0F0010203040501 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		D0B6F5B63006CB710098F0A2 /* Debug */ = {
@@ -323,6 +398,44 @@
 			};
 			name = Release;
 		};
+		E2A0B0D0E0F001020304050A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = justin.HakiUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Haki;
+			};
+			name = Debug;
+		};
+		E2A0B0D0E0F001020304050B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = justin.HakiUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Haki;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -340,6 +453,15 @@
 			buildConfigurations = (
 				D0B6F5B93006CB710098F0A2 /* Debug */,
 				D0B6F5BA3006CB710098F0A2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E2A0B0D0E0F0010203040509 /* Build configuration list for PBXNativeTarget "HakiUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E2A0B0D0E0F001020304050A /* Debug */,
+				E2A0B0D0E0F001020304050B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

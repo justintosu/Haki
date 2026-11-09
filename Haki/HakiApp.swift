@@ -26,12 +26,22 @@ struct HakiApp: App {
         // again while scrolling back through the feed. Set first: creating the
         // services creates the Supabase client, which uses `URLSession.shared`.
         URLCache.shared = URLCache(memoryCapacity: 50 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024, directory: nil)
-        _database = State(initialValue: AppDatabase())
-        _auth = State(initialValue: AuthService.live)
-        _social = State(initialValue: SocialService.live)
-        _portfolio = State(initialValue: PortfolioService.live)
-        _foodAI = State(initialValue: FoodAIService.live)
-        _hevy = State(initialValue: HevySyncService.live)
+        if HakiLaunchOptions.isUITesting {
+            // UI tests: signed in as a sample user, sample data in memory, no network.
+            _database = State(initialValue: AppDatabase(uiTestingSampleData: ()))
+            _auth = State(initialValue: AuthService.preview)
+            _social = State(initialValue: SocialService.preview)
+            _portfolio = State(initialValue: PortfolioService.preview)
+            _foodAI = State(initialValue: FoodAIService.preview)
+            _hevy = State(initialValue: HevySyncService.preview)
+        } else {
+            _database = State(initialValue: AppDatabase())
+            _auth = State(initialValue: AuthService.live)
+            _social = State(initialValue: SocialService.live)
+            _portfolio = State(initialValue: PortfolioService.live)
+            _foodAI = State(initialValue: FoodAIService.live)
+            _hevy = State(initialValue: HevySyncService.live)
+        }
     }
 
     var body: some Scene {

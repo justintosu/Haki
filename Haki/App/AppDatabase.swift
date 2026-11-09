@@ -26,6 +26,20 @@ final class AppDatabase {
         open()
     }
 
+    /// An in-memory store filled with sample money, meal and workout data,
+    /// for UI tests (`HakiLaunchOptions.isUITesting`). Nothing is saved.
+    init(uiTestingSampleData: Void) {
+        do {
+            let container = try HakiSchema.makeContainer(inMemory: true)
+            LedgerStore.loadSampleData(into: container.mainContext)
+            PreviewData.loadHealthSamples(into: container.mainContext)
+            use(container)
+        } catch {
+            failureDescription = String(describing: error)
+            failedAttempts = 1
+        }
+    }
+
     /// A store that failed to open, for previews of the recovery screen.
     init(previewFailure: String) {
         failureDescription = previewFailure
