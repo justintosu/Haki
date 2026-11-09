@@ -192,8 +192,8 @@ enum HakiAIPreviewSamples {
             return AssistantReply(content: [text("Ask me anything about your money, health, workouts, notes or wardrobe.")], stopReason: "end_turn")
         }
         if last.isToolResults {
-            let snippet = last.content.first?["content"]?.stringValue.map { String($0.prefix(160)) } ?? ""
-            return AssistantReply(content: [text("Here's what I found in Haki (sample answer in preview mode):\n\n- Your overview: \(snippet)\n- **Tip:** set a budget for your top spending category to keep it in check.")], stopReason: "end_turn")
+            let summary = overviewSummary(last.content.first?["content"]?.stringValue)
+            return AssistantReply(content: [text("Here's what I found in Haki (sample answer in preview mode):\n\n\(summary)\n- **Tip:** set a budget for your top spending category to keep it in check.")], stopReason: "end_turn")
         }
         let toolUse: JSONValue = .object([
             "type": .string("tool_use"),
@@ -202,6 +202,30 @@ enum HakiAIPreviewSamples {
             "input": .object([:]),
         ])
         return AssistantReply(content: [text("Let me look at your overview."), toolUse], stopReason: "tool_use")
+    }
+
+    /// A few readable lines from the overview lookup's JSON (the real
+    /// assistant writes its own; this keeps preview answers from showing raw JSON).
+    private static func overviewSummary(_ json: String?) -> String {
+        guard let json, let overview = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)) else {
+            return "- Your overview couldn't be read this time."
+        }
+        let code = overview["currency"]?.stringValue ?? "USD"
+        func money(_ value: JSONValue?) -> String? {
+            value?.numberValue.map { $0.formatted(.currency(code: code)) }
+        }
+        var lines: [String] = []
+        if let spent = money(overview["spending_this_month"]?["spent"]) {
+            lines.append("- You've spent **\(spent)** so far this month.")
+        }
+        let budgets = overview["budgets_this_month"]
+        if let left = money(budgets?["left"]), let total = money(budgets?["total_budget"]) {
+            lines.append("- \(left) is left of your \(total) monthly budget.")
+        }
+        if let review = overview["transactions_to_review"]?.intValue, review > 0 {
+            lines.append("- \(review) transaction\(review == 1 ? "" : "s") to review.")
+        }
+        return lines.isEmpty ? "- Your overview has nothing new yet." : lines.joined(separator: "\n")
     }
 
     private static func text(_ value: String) -> JSONValue {
