@@ -85,14 +85,22 @@ jobs:
 
       - name: Pick and boot a simulator
         run: |
+          xcrun simctl list runtimes
           UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
+          import json, re, sys
           devices = json.load(sys.stdin)["devices"]
-          phones = [d for runtime, ds in devices.items() if "iOS" in runtime for d in ds if d["name"].startswith("iPhone")]
-          preferred = [d for d in phones if "Pro" not in d["name"] and "Plus" not in d["name"] and "Max" not in d["name"]]
+          def version(runtime):
+              match = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              return (int(match.group(1)), int(match.group(2))) if match else (0, 0)
+          runtimes = sorted((r for r in devices if "iOS" in r and devices[r]), key=version)
+          if not runtimes:
+              sys.exit("No iOS simulator runtimes")
+          newest = runtimes[-1]
+          phones = [d for d in devices[newest] if d["name"].startswith("iPhone")]
+          preferred = [d for d in phones if not any(word in d["name"] for word in ("Pro", "Plus", "Max", "Air", "mini"))]
           pick = (preferred or phones)[-1]
           print(pick["udid"])
-          sys.stderr.write("Using " + pick["name"] + "\n")
+          sys.stderr.write("Using " + pick["name"] + " on " + newest + "\n")
           ')
           echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID" || true
@@ -100,6 +108,7 @@ jobs:
           # Union Square, New York, so map searches have results.
           xcrun simctl location "$UDID" set 40.7359,-73.9911 || true
           xcrun simctl privacy "$UDID" grant location justin.Haki || true
+          xcodebuild -project Haki.xcodeproj -scheme Haki -showdestinations 2>/dev/null | grep -i "simulator" | head -20 || true
 
       - name: Run UI tests
         run: |
