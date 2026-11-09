@@ -152,16 +152,30 @@ enum StudyFormat {
     static func dueText(_ schedule: CardSchedule, now: Date = .now) -> String {
         guard !schedule.isNew, let dueAt = schedule.dueAt else { return "New" }
         if dueAt <= now { return "Due now" }
-        let days = dueAt.timeIntervalSince(now) / 86_400
-        return "Due in \(SpacedRepetition.intervalText(days: days))"
+        return "Due in \(SpacedRepetition.intervalText(days: daysUntil(dueAt, now: now)))"
     }
 
     /// The same as `dueText`, written out for VoiceOver ("Due in 3 days").
     static func spokenDueText(_ schedule: CardSchedule, now: Date = .now) -> String {
         guard !schedule.isNew, let dueAt = schedule.dueAt else { return "New card" }
         if dueAt <= now { return "Due now" }
-        let days = dueAt.timeIntervalSince(now) / 86_400
-        return "Due in \(spokenInterval(SpacedRepetition.intervalText(days: days)))"
+        return "Due in \(spokenInterval(SpacedRepetition.intervalText(days: daysUntil(dueAt, now: now))))"
+    }
+
+    /// Days from `now` to `date`, to the nearest minute (so a card due in
+    /// 23 h 59 m 58 s reads "1d", not "24h").
+    private static func daysUntil(_ date: Date, now: Date) -> Double {
+        let minutes = (date.timeIntervalSince(now) / 60).rounded()
+        return max(1, minutes) / 1_440
+    }
+
+    /// A note's title for lists: its own title, or its first line without
+    /// Markdown marks ("# Biology" reads "Biology").
+    static func title(for note: Note) -> String {
+        let own = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !own.isEmpty { return own }
+        let cleaned = plainLine(note.displayTitle)
+        return cleaned.isEmpty ? "New note" : cleaned
     }
 
     /// "10m" → "10 minutes", "1d" → "1 day", "4mo" → "4 months".
@@ -331,7 +345,7 @@ struct NoteListRow: View {
                         .foregroundStyle(.orange)
                         .accessibilityLabel("Pinned")
                 }
-                Text(note.displayTitle)
+                Text(StudyFormat.title(for: note))
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)

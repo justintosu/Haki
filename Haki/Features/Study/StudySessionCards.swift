@@ -208,6 +208,7 @@ struct StudyGradeButtons: View {
     private func gradeButton(_ grade: ReviewGrade) -> some View {
         let interval = intervals[grade] ?? ""
         let tint = StudyGradeStyle.tint(grade)
+        let spokenInterval: String = interval.isEmpty ? "" : "Next review in \(StudyFormat.spokenInterval(interval))"
         return Button {
             onGrade(grade)
         } label: {
@@ -226,7 +227,7 @@ struct StudyGradeButtons: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(grade.title)
-        .accessibilityValue(interval.isEmpty ? "" : "Next review in \(StudyFormat.spokenInterval(interval))")
+        .accessibilityValue(spokenInterval)
     }
 }
 
@@ -273,8 +274,12 @@ struct StudyFlipCard: View {
             .rotation3DEffect(.degrees(isFlipped && !reduceMotion ? 180 : 0), axis: (x: 0, y: 1, z: 0))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isFlipped ? "Answer: \(card.back)" : "Question: \(card.front)")
+        .accessibilityLabel(spokenFace)
         .accessibilityHint(isFlipped ? "Double-tap to see the question again" : "Double-tap to show the answer")
+    }
+
+    private var spokenFace: String {
+        isFlipped ? "Answer: \(card.back)" : "Question: \(card.front)"
     }
 
     @ViewBuilder

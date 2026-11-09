@@ -171,7 +171,7 @@ struct NoteEditorView: View {
     private var preview: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text(note.displayTitle)
+                Text(StudyFormat.title(for: note))
                     .font(.title2.weight(.bold))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)

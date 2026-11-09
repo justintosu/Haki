@@ -392,7 +392,7 @@ private struct DeckSourceNoteRow: View {
                         Text("Made from")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text(note.displayTitle)
+                        Text(StudyFormat.title(for: note))
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)

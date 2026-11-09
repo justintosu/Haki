@@ -154,13 +154,14 @@ struct StudySessionView: View {
 
     @ViewBuilder
     private func cardView(for card: Flashcard) -> some View {
+        let position = progress.position
         switch mode {
         case .flip:
-            StudyFlipCard(card: card, onGrade: { grade in answer(card, grade: grade) })
+            StudyFlipCard(card: card, onGrade: { grade in answer(card, grade: grade, at: position) })
         case .typing:
-            StudyTypeCard(card: card, onGrade: { grade in answer(card, grade: grade) })
+            StudyTypeCard(card: card, onGrade: { grade in answer(card, grade: grade, at: position) })
         case .choice:
-            StudyChoiceCard(card: card, otherAnswers: choiceAnswers, onGrade: { grade in answer(card, grade: grade) })
+            StudyChoiceCard(card: card, otherAnswers: choiceAnswers, onGrade: { grade in answer(card, grade: grade, at: position) })
         }
     }
 
@@ -236,7 +237,10 @@ struct StudySessionView: View {
         }
     }
 
-    private func answer(_ card: Flashcard, grade: ReviewGrade) {
+    /// Records an answer for the card shown at `position` (a second tap on a
+    /// card that's already on its way out is ignored).
+    private func answer(_ card: Flashcard, grade: ReviewGrade, at position: Int) {
+        guard stage == .studying, position == progress.position else { return }
         if !card.isDeleted && card.modelContext != nil {
             StudyStore.review(card, grade: grade, in: modelContext)
         }
@@ -265,8 +269,11 @@ struct StudySessionView: View {
             mode = .flip
         }
         progress = StudySessionProgress(queue: plannedQueue)
+        // Nothing due any more: show the setup again, which says this round
+        // goes through every card.
+        let showsSetup = plannedQueue.isEmpty || fellBackToCramming
         withAnimation(.snappy) {
-            stage = plannedQueue.isEmpty ? .setup : .studying
+            stage = showsSetup ? .setup : .studying
         }
     }
 

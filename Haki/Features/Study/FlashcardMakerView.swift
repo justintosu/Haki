@@ -202,8 +202,8 @@ struct FlashcardMakerView: View {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { cancel() }
         }
-        if phase == .review {
-            ToolbarItem(placement: .confirmationAction) {
+        ToolbarItem(placement: .confirmationAction) {
+            if phase == .review {
                 Button("Save deck") { save() }
                     .disabled(keptCount == 0)
             }

@@ -250,13 +250,22 @@ final class AssistantService {
     private func run(on thread: AssistantThread, using dependencies: AssistantServiceDependencies, generation current: Int) async {
         let requestContext = AssistantContext.current(firstName: Self.firstName(from: dependencies.auth.profile?.displayName))
         var lookedAt: [AssistantTool] = []
+        /// Content of paused replies ("pause_turn") not stored yet. It's sent
+        /// back as is to continue the turn, and stored together with the
+        /// reply that finishes it (as one message), so a stopped or failed
+        /// request never leaves the thread ending on a paused reply.
+        var paused: [JSONValue] = []
         var round = 0
 
         while round < Self.maxRounds {
             round += 1
+            var sent = thread.conversation
+            if !paused.isEmpty {
+                sent.append(AssistantMessage(role: .assistant, content: paused))
+            }
             let reply: AssistantReply
             do {
-                reply = try await dependencies.hakiAI.chat(Self.recent(thread.conversation), context: requestContext)
+                reply = try await dependencies.hakiAI.chat(Self.recent(sent), context: requestContext)
             } catch {
                 guard current == generation else { return }
                 let outcome: AssistantProblem = Backend.isCancellation(error) ? .stopped : .failed(error.localizedDescription)
@@ -267,7 +276,7 @@ final class AssistantService {
             }
             guard current == generation, !Task.isCancelled else { return }
 
-            let message = reply.message
+            let message = AssistantMessage(role: .assistant, content: paused + reply.content)
             switch reply.stopReason {
             case "tool_use":
                 let uses = message.toolUses
@@ -298,13 +307,12 @@ final class AssistantService {
                 // request never leaves a lookup without its answer.
                 AssistantStore.append(message, to: thread, in: dependencies.context)
                 AssistantStore.append(.toolResults(results), to: thread, in: dependencies.context)
+                paused = []
                 reloadItems()
             case "pause_turn":
-                // Claude paused a long turn: send it back as is to let it continue.
-                if !message.content.isEmpty {
-                    AssistantStore.append(message, to: thread, in: dependencies.context)
-                    reloadItems()
-                }
+                // Claude paused a long turn (web search): send it back as is
+                // to let it continue; nothing is stored yet.
+                paused = message.content
             default:
                 finish(with: message, on: thread, using: dependencies)
                 return
@@ -318,12 +326,19 @@ final class AssistantService {
     }
 
     /// Stores the final answer with the tools used to give it.
-    private func finish(with message: AssistantMessage, on thread: AssistantThread, using dependencies: AssistantServiceDependencies) {
+    private func finish(with reply: AssistantMessage, on thread: AssistantThread, using dependencies: AssistantServiceDependencies) {
         activity = nil
         task = nil
+        var message = reply
+        if !message.toolUses.isEmpty {
+            // A reply cut off while asking for a lookup (the server reports
+            // it as finished): a stored tool call without its result would
+            // make every later question in this chat fail, so drop it.
+            message.content = message.content.filter { $0["type"]?.stringValue != "tool_use" }
+        }
         guard !message.text.isEmpty else {
             // Nothing to show; the conversation still ends with the person's
-            // message, so Retry can ask again.
+            // message (or lookup results), so Retry can ask again.
             problem = .failed("Haki didn't come up with an answer. Try again.")
             return
         }
