@@ -19,6 +19,7 @@ struct NoteEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppRouter.self) private var router
 
     @FocusState private var focusedField: NoteEditorField?
     @State private var isPreviewing = false
@@ -218,6 +219,7 @@ struct NoteEditorView: View {
             ShareLink(item: shareText) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
+            .disabled(shareText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Divider()
             Button {
                 openFlashcardMaker()
@@ -278,7 +280,9 @@ struct NoteEditorView: View {
     }
 
     /// On the way out: save, delete if asked to, and drop a note left empty
-    /// (but not while a deck made from it is pushed on top).
+    /// (but not while a deck made from it is pushed on top, and not when
+    /// the screen only went out of sight because another tab was chosen:
+    /// the editor is still there when the person comes back).
     private func leave() {
         if isDeleting {
             if !isNoteGone {
@@ -288,7 +292,8 @@ struct NoteEditorView: View {
         }
         guard !isNoteGone else { return }
         saveNow()
-        if openedDeck == nil && !showsFlashcardMaker {
+        let switchedTabs = router.selectedTab != .you
+        if openedDeck == nil && !showsFlashcardMaker && !switchedTabs {
             StudyStore.deleteIfEmpty(note, in: modelContext)
         }
     }

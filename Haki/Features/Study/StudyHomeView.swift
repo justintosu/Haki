@@ -31,6 +31,8 @@ struct StudyHomeView: View {
     @State private var newDeckName = ""
     @State private var pinFeedback = 0
 
+    init() {}
+
     var body: some View {
         list
             .navigationTitle("Notes & Flashcards")

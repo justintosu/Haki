@@ -447,8 +447,13 @@ struct ClothingItemEditorView: View {
     private func useCameraImage(_ image: UIImage) {
         photoItem = nil
         let token = beginPhotoLoad()
-        let data = image.jpegData(compressionQuality: 0.9)
-        Task { await finishPhotoLoad(data, token: token) }
+        Task {
+            // A full-resolution camera photo takes a moment to encode; keep it off the main thread.
+            let data = await Task.detached(priority: .userInitiated) {
+                image.jpegData(compressionQuality: 0.9)
+            }.value
+            await finishPhotoLoad(data, token: token)
+        }
     }
 
     /// Starts preparing a new photo; the returned token tells a stale load
@@ -617,7 +622,7 @@ struct ClothingItemEditorView: View {
     /// Outfit pictures that show this piece are redrawn when their boards are
     /// next opened (until then the outfit shows a collage of its pieces).
     private static func clearOutfitSnapshots(showing item: ClothingItem) {
-        for piece in item.pieces {
+        for piece in item.pieces where !piece.isDeleted {
             piece.outfit?.previewData = nil
         }
     }

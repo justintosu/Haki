@@ -50,10 +50,12 @@ nonisolated enum AssistantToolData {
         .number(Double(value))
     }
 
-    /// `value` rounded to `places` decimals; null when it isn't finite.
+    /// `value` rounded to `places` decimals; null when it isn't finite (one
+    /// non-finite number would make the whole result fail to encode).
     static func number(_ value: Double, places: Int = 1) -> JSONValue {
         guard value.isFinite else { return .null }
-        return .number(rounded(value, places: places))
+        let result = rounded(value, places: places)
+        return .number(result.isFinite ? result : value)
     }
 
     /// Cents as a decimal amount in the currency: 1250 → 12.5.
@@ -169,6 +171,14 @@ nonisolated enum AssistantToolData {
         let cleaned = text.filter { $0.isASCII && ($0.isNumber || $0 == "." || $0 == "-") }
         guard let number = Double(cleaned), number.isFinite else { return nil }
         return number
+    }
+
+    /// A whole-number input (a JSON number, or text such as "10"); nil when
+    /// missing or implausibly large. Used instead of `AssistantToolUse.int`,
+    /// whose `Int(_:)` conversion would trap on a huge number such as 1e30.
+    static func integer(_ value: JSONValue?) -> Int? {
+        guard let number = decimal(value), abs(number) < 1_000_000_000 else { return nil }
+        return Int(number.rounded())
     }
 
     /// Whole cents for an amount in currency units, ignoring the sign; nil
@@ -459,7 +469,7 @@ nonisolated enum AssistantToolData {
     /// characters: while it's too big, the biggest list (searching nested
     /// values) is halved, or the longest text clipped, and the result is
     /// marked `"truncated": true`.
-    static func fitted(_ fields: [String: JSONValue], maxCharacters: Int = maxCharacters) -> String {
+    static func fitted(_ fields: [String: JSONValue], maxCharacters: Int = AssistantToolData.maxCharacters) -> String {
         var value = JSONValue.object(fields)
         var text = value.jsonText
         var rounds = 0

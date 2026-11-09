@@ -261,17 +261,23 @@ struct StudyFlipCard: View {
     }
 
     private var flippingCard: some View {
-        Button {
+        // The back is drawn turned over, so it reads the right way round once
+        // the whole card turns. With Reduce Motion nothing turns; it fades.
+        let backAngle: Double = reduceMotion ? 0 : 180
+        let turnAngle: Double = (isFlipped && !reduceMotion) ? 180 : 0
+        let frontOpacity: Double = isFlipped ? 0 : 1
+        let backOpacity: Double = isFlipped ? 1 : 0
+        return Button {
             flip()
         } label: {
             ZStack {
                 StudyCardFace(caption: "Question", text: card.front)
-                    .opacity(isFlipped ? 0 : 1)
+                    .opacity(frontOpacity)
                 StudyCardFace(caption: "Answer", text: card.back, detail: card.front, tint: Color.hakiPositive)
-                    .rotation3DEffect(.degrees(reduceMotion ? 0 : 180), axis: (x: 0, y: 1, z: 0))
-                    .opacity(isFlipped ? 1 : 0)
+                    .rotation3DEffect(Angle.degrees(backAngle), axis: (x: 0, y: 1, z: 0))
+                    .opacity(backOpacity)
             }
-            .rotation3DEffect(.degrees(isFlipped && !reduceMotion ? 180 : 0), axis: (x: 0, y: 1, z: 0))
+            .rotation3DEffect(Angle.degrees(turnAngle), axis: (x: 0, y: 1, z: 0))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(spokenFace)
@@ -391,7 +397,7 @@ struct StudyTypeCard: View {
                 answerLine(title: "You wrote", text: verdict.typed)
             }
             answerLine(title: "Answer", text: card.back)
-            resultButtons(isCorrect: verdict.isCorrect)
+            resultButtons(isCorrect: verdict.isCorrect, canOverride: !verdict.typed.isEmpty)
         }
         .hakiCard()
     }
@@ -410,10 +416,14 @@ struct StudyTypeCard: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Right: Continue (Good). Wrong: "I was right" (Good) or Continue
+    /// (Again). After "I don't know" there's nothing to override.
     @ViewBuilder
-    private func resultButtons(isCorrect: Bool) -> some View {
+    private func resultButtons(isCorrect: Bool, canOverride: Bool) -> some View {
         if isCorrect {
             continueButton(grade: .good)
+        } else if !canOverride {
+            continueButton(grade: .again)
         } else {
             HStack(spacing: 10) {
                 Button {
@@ -453,7 +463,8 @@ struct StudyTypeCard: View {
         withAnimation(.snappy) {
             verdict = StudyTypedVerdict(isCorrect: isCorrect, typed: answer)
         }
-        UIAccessibility.post(notification: .announcement, argument: isCorrect ? "Correct" : "Not quite. The answer is \(card.back)")
+        let message: String = isCorrect ? "Correct" : "Not quite. The answer is \(card.back)"
+        UIAccessibility.post(notification: .announcement, argument: message)
     }
 
     private func reveal() {
@@ -509,6 +520,12 @@ struct StudyChoiceCard: View {
 
     private func optionButton(index: Int, text: String) -> some View {
         let look = optionLook(index)
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        let fill: Color = look.isHighlighted ? look.tint.opacity(0.14) : Color.clear
+        let stroke: Color = look.isHighlighted ? look.tint : Color.secondary.opacity(0.2)
+        let strokeWidth: CGFloat = look.isHighlighted ? 2 : 1
+        let rowOpacity: Double = look.isDimmed ? 0.55 : 1
+        let hint: String = chosenIndex == nil ? "Choose this answer" : ""
         return Button {
             choose(index)
         } label: {
@@ -527,18 +544,17 @@ struct StudyChoiceCard: View {
                 }
             }
             .padding(16)
-            .background(look.tint.opacity(look.isHighlighted ? 0.14 : 0), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .background(Color.hakiCardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(fill, in: shape)
+            .background(Color.hakiCardBackground, in: shape)
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(look.isHighlighted ? look.tint : Color.secondary.opacity(0.2), lineWidth: look.isHighlighted ? 2 : 1)
+                shape.strokeBorder(stroke, lineWidth: strokeWidth)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .opacity(look.isDimmed ? 0.55 : 1)
+        .opacity(rowOpacity)
         .accessibilityValue(look.spokenState)
-        .accessibilityHint(chosenIndex == nil ? "Choose this answer" : "")
+        .accessibilityHint(hint)
     }
 
     private func optionLook(_ index: Int) -> StudyChoiceLook {

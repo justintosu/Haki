@@ -23,6 +23,11 @@ struct YouProfileCard: View {
 
     @State private var showingEditProfile = false
 
+    /// Grows with the text size, but not past this.
+    private var shownAvatarSize: CGFloat {
+        min(avatarSize, 112)
+    }
+
     init(userID: UUID, record: ProfileRecord?, stats: UserProfile?) {
         self.userID = userID
         self.record = record
@@ -49,13 +54,13 @@ struct YouProfileCard: View {
     private func identity(_ summary: YouProfileSummary) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 10) {
-                AvatarView(url: summary.avatarURL, name: summary.name, size: avatarSize)
+                AvatarView(url: summary.avatarURL, name: summary.name, size: shownAvatarSize)
                 names(summary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             HStack(alignment: .center, spacing: 14) {
-                AvatarView(url: summary.avatarURL, name: summary.name, size: avatarSize)
+                AvatarView(url: summary.avatarURL, name: summary.name, size: shownAvatarSize)
                 names(summary)
                 Spacer(minLength: 0)
             }

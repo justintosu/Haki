@@ -219,10 +219,15 @@ final class SocialFlowTests: HakiUITestCase {
 
     func test06OwnProfile() throws {
         launch()
-        openTab("Profile")
+        // The You tab holds your profile card; "View profile" opens the full profile.
+        openTab("You")
+        _ = expectScreen("You")
+        expectStillRunning("opening You")
+        snap("S20 You")
+        tapElement(app.buttons["View profile"], "the View profile button")
         let shown = expectScreen(myUsername)
-        expectStillRunning("opening Profile")
-        snap("S20 Profile")
+        expectStillRunning("opening my profile")
+        snap("S20b Profile")
         guard shown else { return }
 
         // The header's counts open the follower lists ("128 followers", "2 following").

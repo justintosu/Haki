@@ -43,7 +43,7 @@ struct OutfitBoardView: View {
     var body: some View {
         if isOutfitGone {
             ContentUnavailableView(
-                "Outfit Deleted",
+                "Outfit deleted",
                 systemImage: "hanger",
                 description: Text("This outfit is no longer in your wardrobe.")
             )
@@ -238,7 +238,9 @@ struct OutfitBoardView: View {
 
     /// Pieces back to front, without any whose clothing was deleted.
     private var visiblePieces: [OutfitPiece] {
-        outfit.orderedPieces.filter { !$0.isDeleted && $0.item != nil }
+        outfit.pieces
+            .filter { !$0.isDeleted && $0.item != nil }
+            .sorted { $0.zIndex < $1.zIndex }
     }
 
     private var selectedPiece: OutfitPiece? {
@@ -363,8 +365,9 @@ struct OutfitBoardView: View {
         withAnimation(.snappy) {
             selectedPieceID = piece.id
         }
-        let top = outfit.pieces.map(\.zIndex).max() ?? 0
-        let sharesTop = outfit.pieces.filter { $0.zIndex == top }.count > 1
+        let pieces = visiblePieces
+        let top = pieces.map(\.zIndex).max() ?? 0
+        let sharesTop = pieces.filter { $0.zIndex == top }.count > 1
         if piece.zIndex < top || sharesTop {
             WardrobeStore.bringToFront(piece, in: modelContext)
             hasEdits = true
@@ -380,9 +383,8 @@ struct OutfitBoardView: View {
         if selectedPieceID == piece.id {
             selectedPieceID = nil
         }
-        withAnimation(.snappy) {
-            WardrobeStore.removePiece(piece, in: modelContext)
-        }
+        // Not animated: a removal transition would keep drawing the deleted model.
+        WardrobeStore.removePiece(piece, in: modelContext)
         hasEdits = true
     }
 
@@ -465,13 +467,18 @@ private struct OutfitBoardPieceView: View {
     let onCommit: () -> Void
     let onRemove: () -> Void
 
-    @State private var dragOffset: CGSize = .zero
-    @State private var pinchScale: CGFloat = 1
-    @State private var twistDegrees: Double = 0
-    @State private var isDragging = false
+    // Live gesture values. `@GestureState` goes back to its start value when
+    // a gesture ends or is cancelled, so a piece never stays half-moved.
+    @GestureState private var dragOffset: CGSize = .zero
+    @GestureState private var pinchScale: CGFloat = 1
+    @GestureState private var twistDegrees: Double = 0
 
     private static let minWidthFraction = 0.12
     private static let maxWidthFraction = 1.0
+
+    private var isDragging: Bool {
+        dragOffset != .zero
+    }
 
     var body: some View {
         accessibleArtwork
@@ -563,12 +570,13 @@ private struct OutfitBoardPieceView: View {
         // Global space: the translation doesn't depend on the piece's own
         // rotation or scale (the board itself is never transformed).
         DragGesture(minimumDistance: 4, coordinateSpace: .global)
-            .onChanged { value in
-                if !isDragging {
-                    isDragging = true
+            .updating($dragOffset) { value, state, _ in
+                state = value.translation
+            }
+            .onChanged { _ in
+                if !isSelected {
                     onDragStart()
                 }
-                dragOffset = value.translation
             }
             .onEnded { value in
                 commitMove(value.translation)
@@ -577,8 +585,8 @@ private struct OutfitBoardPieceView: View {
 
     private var resizeGesture: some Gesture {
         MagnifyGesture()
-            .onChanged { value in
-                pinchScale = value.magnification
+            .updating($pinchScale) { value, state, _ in
+                state = value.magnification
             }
             .onEnded { value in
                 commitResize(value.magnification)
@@ -587,8 +595,8 @@ private struct OutfitBoardPieceView: View {
 
     private var rotateGesture: some Gesture {
         RotateGesture()
-            .onChanged { value in
-                twistDegrees = value.rotation.degrees
+            .updating($twistDegrees) { value, state, _ in
+                state = value.rotation.degrees
             }
             .onEnded { value in
                 commitRotation(value.rotation.degrees)
@@ -598,8 +606,6 @@ private struct OutfitBoardPieceView: View {
     // MARK: Writing
 
     private func commitMove(_ translation: CGSize) {
-        isDragging = false
-        defer { dragOffset = .zero }
         guard boardSize.width > 0, boardSize.height > 0 else { return }
         let x = piece.centerX + Double(translation.width / boardSize.width)
         let y = piece.centerY + Double(translation.height / boardSize.height)
@@ -609,14 +615,12 @@ private struct OutfitBoardPieceView: View {
     }
 
     private func commitResize(_ magnification: CGFloat) {
-        defer { pinchScale = 1 }
         let width = piece.widthFraction * Double(magnification)
         piece.widthFraction = min(max(width, Self.minWidthFraction), Self.maxWidthFraction)
         onCommit()
     }
 
     private func commitRotation(_ degrees: Double) {
-        defer { twistDegrees = 0 }
         var angle = (piece.rotationDegrees + degrees).truncatingRemainder(dividingBy: 360)
         if angle > 180 { angle -= 360 }
         if angle < -180 { angle += 360 }

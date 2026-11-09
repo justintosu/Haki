@@ -192,6 +192,10 @@ struct AssistantToolExecutor {
     // MARK: - get_overview
 
     private func overview() async throws -> [String: JSONValue] {
+        // The only suspension comes first: models fetched below are read
+        // without any await in between, so none can be deleted mid-use.
+        await loadPortfolioIfNeeded()
+        let investing = investmentSummary()
         let month = MonthInterval.current(calendar: calendar, now: now)
         let recent = try fetchTransactions(from: month.previous.start(in: calendar))
         let categories = try fetchCategories()
@@ -202,8 +206,6 @@ struct AssistantToolExecutor {
         let training = try overviewWorkouts()
         let study = try overviewStudy()
         let closet = try overviewWardrobe()
-        await loadPortfolioIfNeeded()
-        let investing = investmentSummary()
 
         return [
             "currency": .string(currency),
@@ -325,13 +327,22 @@ struct AssistantToolExecutor {
         }
         let netWorth = accounts.reduce(0) { $0 + $1.netWorthContributionCents }
         var fields: [String: JSONValue] = ["total": J.money(netWorth), "accounts": J.int(accounts.count)]
-        let observations = accounts.filter { $0.includeInNetWorth }.flatMap { $0.balanceObservations }
-        if let monthAgo = calendar.date(byAdding: .month, value: -1, to: now),
-           observations.contains(where: { $0.date <= monthAgo }),
-           let start = NetWorthCalculator.series(observations: observations, at: [monthAgo]).first {
-            fields["change_last_month"] = J.money(netWorth - start.netCents)
+        if let change = netWorthChangeSinceMonthAgo(accounts, netWorth: netWorth) {
+            fields["change_last_month"] = J.money(change)
         }
         return fields
+    }
+
+    /// Change in net worth since a month ago, as on the Overview tab (recorded
+    /// balances only); nil without history that old. get_overview and
+    /// get_accounts both use it, so "change_last_month" is the same in each.
+    private func netWorthChangeSinceMonthAgo(_ accounts: [Account], netWorth: Int) -> Int? {
+        let observations = accounts.filter { $0.includeInNetWorth }.flatMap { $0.balanceObservations }
+        guard let monthAgo = calendar.date(byAdding: .month, value: -1, to: now),
+              observations.contains(where: { $0.date <= monthAgo }),
+              let start = NetWorthCalculator.series(observations: observations, at: [monthAgo]).first
+        else { return nil }
+        return netWorth - start.netCents
     }
 
     private func overviewFood() throws -> [String: JSONValue] {
@@ -402,7 +413,7 @@ struct AssistantToolExecutor {
         var notes: [String] = []
         let current = MonthInterval.current(calendar: calendar, now: now)
         let month = readMonth(use, default: current, notes: &notes)
-        let monthsBack = J.clamped(use.int("months_back"), to: 0...11, default: 2)
+        let monthsBack = J.clamped(J.integer(use.input["months_back"]), to: 0...11, default: 2)
         let months = MonthInterval.trailing(monthsBack + 1, endingAt: month)
         let earlier = Array(months.dropLast().reversed())
         let oldest = min(months.first ?? month, month.previous)
@@ -554,7 +565,7 @@ struct AssistantToolExecutor {
             toDay = start
             notes.append("\"from\" was after \"to\", so they were swapped.")
         }
-        let limit = J.clamped(use.int("limit"), to: 1...50, default: 20)
+        let limit = J.clamped(J.integer(use.input["limit"]), to: 1...50, default: 20)
         let minimum = J.decimal(use.input["min_amount"]).flatMap { J.cents(fromAmount: $0) }
         let upper = toDay.flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
         let records = try fetchTransactions(from: fromDay, to: upper)
@@ -912,6 +923,9 @@ struct AssistantToolExecutor {
         result["accounts"] = J.objects(accounts.map { accountFields($0) })
         result["by_group"] = accountGroups(accounts)
         result.merge(netWorthHistory(observations, netWorth: netWorth)) { _, new in new }
+        if let change = netWorthChangeSinceMonthAgo(accounts, netWorth: netWorth) {
+            result["change_last_month"] = J.money(change)
+        }
         return result
     }
 
@@ -960,10 +974,6 @@ struct AssistantToolExecutor {
         if history.count >= 2, let first = history.first {
             fields["change_over_history"] = J.money(netWorth - first.cents)
             fields["history_starts"] = J.day(first.date, calendar: calendar)
-        }
-        if let monthAgo = calendar.date(byAdding: .month, value: -1, to: now),
-           let point = history.last(where: { $0.date <= monthAgo }) {
-            fields["change_last_month"] = J.money(netWorth - point.cents)
         }
         return fields
     }
@@ -1279,8 +1289,11 @@ struct AssistantToolExecutor {
             "volume": J.weight(thisWeek.reduce(0.0) { $0 + $1.volumeKg }, unit: unit),
         ])
 
-        let weekCount = max(1, min(53, (range.dayCount + 6) / 7))
+        // Every calendar week the range touches, so the weeks add up to the total.
         let lastMoment = min(now, range.end.addingTimeInterval(-1))
+        let firstWeek = calendar.dateInterval(of: .weekOfYear, for: range.firstDay)?.start ?? range.firstDay
+        let lastWeek = calendar.dateInterval(of: .weekOfYear, for: lastMoment)?.start ?? lastMoment
+        let weekCount = max(1, min(54, calendar.daysBetween(firstWeek, lastWeek) / 7 + 1))
         let perWeek = WorkoutMath.workoutsPerWeek(
             workoutDates: inRange.map { $0.startedAt }, weeks: weekCount, now: lastMoment, calendar: calendar
         )
@@ -1479,7 +1492,7 @@ struct AssistantToolExecutor {
 
     private func searchNotes(_ use: AssistantToolUse) throws -> [String: JSONValue] {
         let notes = try context.fetch(FetchDescriptor<Note>(sortBy: [SortDescriptor(\Note.updatedAt, order: .reverse)]))
-        let limit = J.clamped(use.int("limit"), to: 1...10, default: 5)
+        let limit = J.clamped(J.integer(use.input["limit"]), to: 1...10, default: 5)
         let query = use.string("query")
         let words = J.searchWords(query)
 

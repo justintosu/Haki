@@ -83,6 +83,43 @@ enum WardrobeFormat {
     }
 }
 
+// MARK: - Search
+
+enum WardrobeSearch {
+    /// The search text, trimmed and lowercased ("" = no search).
+    static func normalized(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// Whether a piece's name, brand, type, colors or styles contain `query`
+    /// (already normalized).
+    static func matches(_ item: ClothingItem, query: String) -> Bool {
+        if query.isEmpty { return true }
+        if item.name.lowercased().contains(query) { return true }
+        if item.brand.lowercased().contains(query) { return true }
+        if item.category.title.lowercased().contains(query) { return true }
+        if item.category.singularTitle.lowercased().contains(query) { return true }
+        for color in item.colors where color.title.lowercased().contains(query) {
+            return true
+        }
+        for style in item.styles where style.title.lowercased().contains(query) {
+            return true
+        }
+        return false
+    }
+
+    /// Whether an outfit's name, occasion or one of its pieces' names contain `query`.
+    static func matches(_ outfit: Outfit, query: String) -> Bool {
+        if query.isEmpty { return true }
+        if outfit.name.lowercased().contains(query) { return true }
+        if outfit.occasion.lowercased().contains(query) { return true }
+        for item in outfit.items where item.name.lowercased().contains(query) {
+            return true
+        }
+        return false
+    }
+}
+
 // MARK: - Colors
 
 enum WardrobePalette {

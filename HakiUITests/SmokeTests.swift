@@ -13,7 +13,7 @@ final class SmokeTests: HakiUITestCase {
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20), "The tab bar never appeared (signed-in sample user)")
         snap("01 Home")
 
-        for (index, tab) in ["Feed", "Invest", "Health", "Profile", "Home"].enumerated() {
+        for (index, tab) in ["Feed", "Invest", "Health", "You", "Home"].enumerated() {
             openTab(tab)
             sleep(2)
             expectStillRunning("opening \(tab)")

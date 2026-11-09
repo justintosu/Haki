@@ -20,6 +20,8 @@ struct StudySummaryCard: View {
 
     @State private var session: StudySessionRequest?
 
+    init() {}
+
     var body: some View {
         let totals = StudyDueTotals(decks: decks)
         let recentNotes = Array(notes.prefix(2))

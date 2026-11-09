@@ -352,7 +352,9 @@ private struct StudySessionSetupView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .padding(.horizontal)
+            .padding(.top, 8)
             .padding(.bottom, 8)
+            .background(Color.hakiBackground)
         }
     }
 
@@ -428,6 +430,7 @@ private struct StudyModeRow: View {
     let isSelected: Bool
 
     var body: some View {
+        let highlight: Color = isSelected ? Color.accentColor.opacity(0.1) : Color.clear
         HStack(spacing: 12) {
             StudyIconTile(systemImage: mode.systemImage, tint: isSelected ? Color.accentColor : Color.secondary)
             VStack(alignment: .leading, spacing: 2) {
@@ -446,10 +449,7 @@ private struct StudyModeRow: View {
                 .accessibilityHidden(true)
         }
         .padding(12)
-        .background(
-            isSelected ? Color.accentColor.opacity(0.1) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
+        .background(highlight, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }

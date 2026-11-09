@@ -35,7 +35,7 @@ struct ClothingItemDetailView: View {
     var body: some View {
         if isItemGone {
             ContentUnavailableView(
-                "Piece Deleted",
+                "Piece deleted",
                 systemImage: "hanger",
                 description: Text("This piece is no longer in your wardrobe.")
             )
@@ -252,6 +252,7 @@ struct ClothingItemDetailView: View {
     private var containingOutfits: [Outfit] {
         var seen = Set<UUID>()
         return item.pieces
+            .filter { !$0.isDeleted }
             .compactMap { $0.outfit }
             .filter { !$0.isDeleted && seen.insert($0.id).inserted }
             .sorted { $0.createdAt > $1.createdAt }
@@ -268,9 +269,12 @@ struct ClothingItemDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 VStack(spacing: 10) {
+                    // Opened through `openedOutfit`, not a link: removing this
+                    // piece on the board takes the outfit out of this list,
+                    // and a removed link would close the board.
                     ForEach(outfits) { outfit in
-                        NavigationLink {
-                            OutfitBoardView(outfit: outfit)
+                        Button {
+                            openedOutfit = outfit
                         } label: {
                             HStack {
                                 WardrobeOutfitRow(outfit: outfit)
@@ -316,12 +320,11 @@ struct ClothingItemDetailView: View {
         deletionRequested = false
         guard !isItemGone else { return }
         // Outfit pictures showing this piece are redrawn on their next visit.
-        for piece in item.pieces {
+        for piece in item.pieces where !piece.isDeleted {
             piece.outfit?.previewData = nil
         }
-        withAnimation {
-            WardrobeStore.deleteItem(item, in: modelContext)
-        }
+        // Not animated: grids animating the card away would keep drawing the deleted model.
+        WardrobeStore.deleteItem(item, in: modelContext)
     }
 }
 

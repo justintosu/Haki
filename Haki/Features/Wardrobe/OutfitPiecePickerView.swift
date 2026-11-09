@@ -212,14 +212,9 @@ struct OutfitPiecePickerView: View {
         if let categoryFilter {
             result = result.filter { $0.category == categoryFilter }
         }
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let query = WardrobeSearch.normalized(searchText)
         if !query.isEmpty {
-            result = result.filter { item in
-                item.name.lowercased().contains(query)
-                    || item.brand.lowercased().contains(query)
-                    || item.category.title.lowercased().contains(query)
-                    || item.colors.contains { $0.title.lowercased().contains(query) }
-            }
+            result = result.filter { WardrobeSearch.matches($0, query: query) }
         }
         return result
     }

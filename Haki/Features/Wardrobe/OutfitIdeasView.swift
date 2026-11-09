@@ -225,7 +225,7 @@ struct OutfitIdeasView: View {
                         OutfitIdeaCard(
                             idea: idea,
                             pieces: idea.itemIDs.compactMap { byID[$0] },
-                            savedOutfit: savedOutfits[index],
+                            savedOutfit: liveSavedOutfit(at: index),
                             onSave: { save(idea, at: index) }
                         )
                     }
@@ -236,6 +236,14 @@ struct OutfitIdeasView: View {
 
     private var resultsTitle: String {
         requestedOccasion.isEmpty ? "Ideas for every day" : "Ideas for \(requestedOccasion.lowercased())"
+    }
+
+    /// The outfit saved from idea `index`, unless it was deleted on its board
+    /// since (then the idea can be saved again).
+    private func liveSavedOutfit(at index: Int) -> Outfit? {
+        guard let outfit = savedOutfits[index] else { return nil }
+        if outfit.isDeleted || outfit.modelContext == nil { return nil }
+        return outfit
     }
 
     private var itemsByID: [String: ClothingItem] {
@@ -293,7 +301,7 @@ struct OutfitIdeasView: View {
     }
 
     private func save(_ idea: OutfitIdea, at index: Int) {
-        guard savedOutfits[index] == nil else { return }
+        guard liveSavedOutfit(at: index) == nil else { return }
         guard let outfit = WardrobeStore.saveIdea(idea, occasion: requestedOccasion, from: items, in: modelContext) else {
             errorMessage = "Some of those pieces are no longer in your wardrobe, so that outfit couldn't be saved."
             return

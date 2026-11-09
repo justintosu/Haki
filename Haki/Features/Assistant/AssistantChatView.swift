@@ -30,6 +30,13 @@ struct AssistantChatView: View {
 
     @State private var service = AssistantService()
     @State private var didStart = false
+    /// Whether the person agreed (once) to send what their questions need to Claude.
+    @AppStorage(AssistantChatView.consentKey) private var hasConsented = false
+    /// A question waiting for that agreement.
+    @State private var pendingQuestion: String?
+
+    /// Bool in UserDefaults: the one-time "Ask Haki uses Claude" agreement.
+    static let consentKey = "assistant.aiConsent"
 
     private static let bottomID = "assistant-chat-bottom"
 
@@ -51,6 +58,20 @@ struct AssistantChatView: View {
         }
         .onDisappear {
             service.cancel()
+        }
+        .alert("Ask Haki uses Claude", isPresented: consentBinding) {
+            Button("Allow") {
+                hasConsented = true
+                if let question = pendingQuestion {
+                    pendingQuestion = nil
+                    _ = service.send(question, using: dependencies)
+                }
+            }
+            Button("Not now", role: .cancel) {
+                pendingQuestion = nil
+            }
+        } message: {
+            Text("To answer, Haki looks up only what your question needs on this iPhone — for example your spending or workouts — and sends it with your question to Haki's server and Anthropic's Claude. Nothing is stored on Haki's servers.")
         }
     }
 
@@ -182,12 +203,27 @@ struct AssistantChatView: View {
             service.open(thread)
         }
         if let question = initialQuestion?.trimmingCharacters(in: .whitespacesAndNewlines), !question.isEmpty {
-            service.send(question, using: dependencies)
+            _ = send(question)
         }
     }
 
+    /// Sends `text`, asking first (once) whether it's OK to use Claude.
+    /// Preview mode never leaves the device, so it doesn't ask.
     private func send(_ text: String) -> Bool {
-        service.send(text, using: dependencies)
+        guard hasConsented || hakiAI.isPreview else {
+            pendingQuestion = text
+            return true
+        }
+        return service.send(text, using: dependencies)
+    }
+
+    private var consentBinding: Binding<Bool> {
+        Binding(
+            get: { pendingQuestion != nil },
+            set: { isPresented in
+                if !isPresented { pendingQuestion = nil }
+            }
+        )
     }
 
     /// New answers scroll to their start (so long answers read from the

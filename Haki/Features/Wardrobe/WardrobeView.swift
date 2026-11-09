@@ -30,7 +30,12 @@ struct WardrobeView: View {
     @State private var activeSheet: WardrobeSheet?
     /// Made in the "New outfit" sheet; opened once the sheet has closed.
     @State private var pendingOutfit: Outfit?
+    /// Pushed through `navigationDestination(item:)` rather than links in the
+    /// grids: a filter or sort can take a piece out of the grid while its
+    /// screen is open (e.g. "Wore it today" on a forgotten piece), and a
+    /// removed link would close the screen it opened.
     @State private var openedOutfit: Outfit?
+    @State private var openedItem: ClothingItem?
     @State private var wornFeedback = 0
 
     @ScaledMetric(relativeTo: .body) private var cardMinWidth: CGFloat = 150
@@ -63,6 +68,9 @@ struct WardrobeView: View {
         }
         .navigationDestination(item: $openedOutfit) { outfit in
             OutfitBoardView(outfit: outfit)
+        }
+        .navigationDestination(item: $openedItem) { item in
+            ClothingItemDetailView(item: item)
         }
         .sensoryFeedback(.success, trigger: wornFeedback)
     }
@@ -183,12 +191,13 @@ struct WardrobeView: View {
     @ViewBuilder
     private func mostWornTile(_ item: ClothingItem?) -> some View {
         if let item {
-            NavigationLink {
-                ClothingItemDetailView(item: item)
+            Button {
+                openedItem = item
             } label: {
                 WardrobeStatTile(title: "Most worn", value: item.name, detail: WardrobeFormat.wears(item.timesWorn), systemImage: "flame", tint: .orange)
             }
             .buttonStyle(.plain)
+            .accessibilityHint("Opens this piece")
         } else {
             WardrobeStatTile(title: "Most worn", value: "None yet", detail: "Tap “Wore it today” on a piece", systemImage: "flame", tint: .orange)
         }
@@ -308,8 +317,8 @@ struct WardrobeView: View {
     private func piecesGrid(_ shown: [ClothingItem]) -> some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: cardMinWidth), spacing: 12)], spacing: 12) {
             ForEach(shown) { item in
-                NavigationLink {
-                    ClothingItemDetailView(item: item)
+                Button {
+                    openedItem = item
                 } label: {
                     WardrobeItemCard(item: item)
                 }
@@ -345,15 +354,9 @@ struct WardrobeView: View {
         if showsForgottenOnly {
             result = result.filter { forgottenIDs.contains($0.id.uuidString) }
         }
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let query = WardrobeSearch.normalized(searchText)
         if !query.isEmpty {
-            result = result.filter { item in
-                item.name.lowercased().contains(query)
-                    || item.brand.lowercased().contains(query)
-                    || item.category.title.lowercased().contains(query)
-                    || item.colors.contains { $0.title.lowercased().contains(query) }
-                    || item.styles.contains { $0.title.lowercased().contains(query) }
-            }
+            result = result.filter { WardrobeSearch.matches($0, query: query) }
         }
         switch sort {
         case .recent:
@@ -436,8 +439,8 @@ struct WardrobeView: View {
     private func outfitsGrid(_ shown: [Outfit]) -> some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: cardMinWidth), spacing: 12)], spacing: 12) {
             ForEach(shown) { outfit in
-                NavigationLink {
-                    OutfitBoardView(outfit: outfit)
+                Button {
+                    openedOutfit = outfit
                 } label: {
                     WardrobeOutfitCard(outfit: outfit)
                 }
@@ -456,13 +459,9 @@ struct WardrobeView: View {
     }
 
     private var visibleOutfits: [Outfit] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let query = WardrobeSearch.normalized(searchText)
         guard !query.isEmpty else { return outfits }
-        return outfits.filter { outfit in
-            outfit.name.lowercased().contains(query)
-                || outfit.occasion.lowercased().contains(query)
-                || outfit.items.contains { $0.name.lowercased().contains(query) }
-        }
+        return outfits.filter { WardrobeSearch.matches($0, query: query) }
     }
 }
 
@@ -512,10 +511,12 @@ private enum WardrobeSheet: Identifiable {
     case newOutfit
     case ideas
 
+    /// Never reads the model: the editor can delete the piece while this
+    /// sheet is still up, and SwiftUI keeps reading the id until it closes.
     var id: String {
         switch self {
         case .addPiece: "addPiece"
-        case .edit(let item): "edit-\(item.id.uuidString)"
+        case .edit(let item): "edit-\(UInt(bitPattern: ObjectIdentifier(item)))"
         case .newOutfit: "newOutfit"
         case .ideas: "ideas"
         }
