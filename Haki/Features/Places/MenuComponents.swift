@@ -65,7 +65,8 @@ enum MenuFormat {
         if let perCalories = dish.proteinPer100Calories {
             parts.append("\(oneDecimal(perCalories)) g protein per 100 kcal")
         }
-        if let perPrice = dish.proteinPerCurrencyUnit {
+        // Dropped when it rounds to 0.0 (yen, won and other small units).
+        if let perPrice = dish.proteinPerCurrencyUnit, perPrice >= 0.05 {
             parts.append("\(oneDecimal(perPrice)) g protein per \(currencySymbol(for: currency))")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

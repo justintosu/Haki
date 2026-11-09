@@ -46,7 +46,10 @@ final class AppRouter {
     var pendingTransactionFilter: TransactionFilter?
 
     /// A money screen to push on the Home tab. `OverviewView` presents it and
-    /// clears it when the user navigates back.
+    /// clears it when the user navigates back. It's a single screen on top of
+    /// Home, so changing it replaces whatever it showed: screens already
+    /// under Home push their own follow-ups (e.g. `TransactionsView(initialFilter:)`)
+    /// instead of calling `showHome` / `showTransactions`.
     var homeDestination: HomeDestination?
 
     /// Switches to the Home tab and opens Transactions with a filter applied.

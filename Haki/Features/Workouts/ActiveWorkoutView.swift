@@ -66,6 +66,8 @@ struct ActiveWorkoutView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: recordFeedback)
         .sensoryFeedback(.success, trigger: restDoneFeedback)
         .sensoryFeedback(.success, trigger: finishFeedback)
+        .onAppear { restoreRest() }
+        .onChange(of: restEndsAt) { _, end in rememberRest(endingAt: end) }
         .onDisappear { closeUp() }
     }
 
@@ -414,6 +416,24 @@ struct ActiveWorkoutView: View {
         }
     }
 
+    /// Keeps the running rest outside the screen, so minimizing and resuming
+    /// the workout shows it again; cleared when the rest ends or is skipped.
+    private func rememberRest(endingAt end: Date?) {
+        if let end, !isGone {
+            WorkoutRestCountdown.current = WorkoutRestCountdown(workoutID: workout.id, endsAt: end, totalSeconds: restTotalSeconds)
+        } else {
+            WorkoutRestCountdown.current = nil
+        }
+    }
+
+    /// Picks up the rest that was running when this workout was minimized.
+    private func restoreRest() {
+        guard restEndsAt == nil, !isGone, let saved = WorkoutRestCountdown.current,
+              saved.workoutID == workout.id, saved.endsAt.timeIntervalSinceNow > 0.5 else { return }
+        restTotalSeconds = saved.totalSeconds
+        restEndsAt = saved.endsAt
+    }
+
     /// Waits for the current rest to end (restarted whenever the end moves).
     private func runRestTimer() async {
         guard let end = restEndsAt else { return }
@@ -561,6 +581,15 @@ private struct WorkoutElapsedText: View {
 private struct WorkoutHistoryTarget: Hashable {
     let key: String
     let name: String
+}
+
+/// The rest countdown of the workout being logged, kept while the screen is
+/// minimized so resuming shows it again.
+private struct WorkoutRestCountdown {
+    var workoutID: UUID
+    var endsAt: Date
+    var totalSeconds: Int
+    static var current: WorkoutRestCountdown?
 }
 
 // MARK: - Finished

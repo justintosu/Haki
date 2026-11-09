@@ -80,6 +80,15 @@ struct OverviewView: View {
             // tabs: don't leave a sheet covering the new tab.
             activeSheet = nil
         }
+        .onChange(of: router.homeDestination) { _, destination in
+            // A Home screen was asked for without changing tabs (e.g. "Review
+            // them" in Settings opened from this tab's toolbar): close the
+            // sheet so it shows, and drop a screen opened from a card so it
+            // isn't left on top of (or presented alongside) the new one.
+            guard destination != nil else { return }
+            activeSheet = nil
+            openedScreen = nil
+        }
     }
 
     // MARK: Content

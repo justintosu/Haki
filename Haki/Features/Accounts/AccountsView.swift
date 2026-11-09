@@ -20,12 +20,20 @@ struct AccountsView: View {
     @State private var showsNewAccount = false
     @State private var balanceTarget: Account?
     @State private var savedCount = 0
+    /// The account opened from a row. Pushed from here, not from its row:
+    /// changing an account's type moves it to another group's card, and
+    /// removing the row would pop the screen it opened.
+    @State private var openedAccount: Account?
 
     init() {}
 
     var body: some View {
         content
             .navigationTitle("Accounts")
+            // Outside `content`, so it stays when the last account is deleted.
+            .navigationDestination(item: $openedAccount) { account in
+                AccountDetailView(account: account)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -93,8 +101,8 @@ struct AccountsView: View {
                         Divider()
                             .padding(.leading, 48)
                     }
-                    NavigationLink {
-                        AccountDetailView(account: account)
+                    Button {
+                        openedAccount = account
                     } label: {
                         AccountsRow(account: account)
                     }

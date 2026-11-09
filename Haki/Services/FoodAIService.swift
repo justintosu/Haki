@@ -49,6 +49,9 @@ final class FoodAIService {
     private let client: SupabaseClient?
     /// Menus fetched this session, so going back and forth doesn't ask again.
     private var menuCache: [String: MenuReport] = [:]
+    /// Menu lookups still running, by kind ("load" or "refresh") and place,
+    /// so a screen that comes back mid-lookup joins it instead of asking again.
+    @ObservationIgnored private var menuLookups: [String: Task<MenuReport, any Error>] = [:]
 
     init(client: SupabaseClient?) {
         self.client = client
@@ -103,31 +106,56 @@ final class FoodAIService {
     /// lookup of a place can take up to two minutes (the server searches the
     /// web); later ones come from a cache. `refresh` asks for a new search.
     func menu(for place: FoodPlaceQuery, refresh: Bool = false) async throws -> MenuReport {
-        if !refresh, let cached = menuCache[place.cacheKey] { return cached }
+        let key = place.cacheKey
+        if !refresh, let cached = menuCache[key] { return cached }
         guard let client else {
             try await Task.sleep(for: .seconds(2))
             var sample = FoodAIPreviewSamples.menu
             sample.placeName = place.placeName
-            menuCache[place.cacheKey] = sample
+            menuCache[key] = sample
             return sample
         }
-        let request = FoodAIMenuRequest(action: "menu", place: place, refresh: refresh)
-        do {
-            let report: MenuReport = try await client.functions.invoke(
-                "food-ai",
-                options: FunctionInvokeOptions(body: request, timeoutInterval: 160),
-                decoder: JSONDecoder()
-            )
-            if report.foundMenu { menuCache[place.cacheKey] = report }
-            return report
-        } catch {
-            throw Backend.userFacingError(error, fallback: "Couldn't look up that menu. Try again.")
+        let lookupKey = (refresh ? "refresh|" : "load|") + key
+        if let running = menuLookups[lookupKey] {
+            return try await running.value
         }
+        let options = FunctionInvokeOptions(
+            body: FoodAIMenuRequest(action: "menu", place: place, refresh: refresh),
+            timeoutInterval: 160
+        )
+        // Its own task: leaving the menu screen or switching tabs doesn't
+        // cancel the lookup, and coming back joins it instead of starting a
+        // second web search.
+        let task = Task<MenuReport, any Error> {
+            do {
+                let report: MenuReport = try await client.functions.invoke(
+                    "food-ai",
+                    options: options,
+                    decoder: JSONDecoder()
+                )
+                // Cancelled by `reset()` (sign-out): don't keep it.
+                if report.foundMenu, !Task.isCancelled { self.menuCache[key] = report }
+                return report
+            } catch {
+                throw Backend.userFacingError(error, fallback: "Couldn't look up that menu. Try again.")
+            }
+        }
+        menuLookups[lookupKey] = task
+        defer {
+            // Unless `reset()` already dropped it and a new lookup took its place.
+            if menuLookups[lookupKey] == task { menuLookups[lookupKey] = nil }
+        }
+        return try await task.value
     }
 
-    /// Forgets menus fetched this session (e.g. on sign-out).
+    /// Forgets menus fetched this session and stops lookups still running
+    /// (e.g. on sign-out).
     func reset() {
         menuCache = [:]
+        for lookup in menuLookups.values {
+            lookup.cancel()
+        }
+        menuLookups = [:]
     }
 }
 

@@ -16,7 +16,6 @@ struct AccountDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Environment(AppRouter.self) private var router
 
     @State private var range: ChartRange = .threeMonths
     @State private var showsBalanceUpdate = false
@@ -30,6 +29,9 @@ struct AccountDetailView: View {
     /// row, so an edit that moves it to another account (and removes the
     /// row) doesn't pop the detail screen.
     @State private var openedTransaction: TransactionRecord?
+    /// "See all in Transactions": the account's transactions, pushed on top
+    /// of this screen so Back returns here.
+    @State private var showsAllTransactions = false
 
     /// How many recent transactions the screen lists.
     private static let transactionLimit = 50
@@ -77,6 +79,9 @@ struct AccountDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openedTransaction) { transaction in
             TransactionDetailView(transaction: transaction)
+        }
+        .navigationDestination(isPresented: $showsAllTransactions) {
+            TransactionsView(initialFilter: .account(account.id))
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -242,7 +247,7 @@ struct AccountDetailView: View {
                     }
                 }
                 Button {
-                    router.showTransactions(.account(account.id))
+                    showsAllTransactions = true
                 } label: {
                     Text(seeAllTitle(total: all.count, shown: recent.count))
                         .font(.subheadline.weight(.semibold))

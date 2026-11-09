@@ -17,13 +17,25 @@ struct BudgetsView: View {
     @Query(sort: \TransactionRecord.date, order: .reverse)
     private var transactions: [TransactionRecord]
 
-    @Environment(AppRouter.self) private var router
-
     @State private var month: MonthInterval = .current()
     @State private var editorTarget: BudgetsEditorTarget? = nil
+    /// The category opened from a row. Pushed from here, not from its row:
+    /// a category moves between Budgets, Not budgeted and Income (or drops
+    /// out) when its budget or spending changes, and removing the row would
+    /// pop the screen it opened.
+    @State private var openedCategory: TransactionCategory?
+    /// Uncategorized transactions, pushed from here for the same reason
+    /// (the row goes once they're all categorized).
+    @State private var showsUncategorized = false
 
     var body: some View {
         content(snapshot)
+            .navigationDestination(item: $openedCategory) { category in
+                CategoryDetailView(category: category, month: month)
+            }
+            .navigationDestination(isPresented: $showsUncategorized) {
+                TransactionsView(initialFilter: .uncategorized)
+            }
             .navigationTitle("Budgets")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -87,8 +99,8 @@ struct BudgetsView: View {
     }
 
     private func budgetLink(_ line: BudgetsCategoryLine, snapshot: BudgetsSnapshot) -> some View {
-        NavigationLink {
-            CategoryDetailView(category: line.category, month: snapshot.month)
+        Button {
+            openedCategory = line.category
         } label: {
             BudgetsBudgetRow(line: line, monthFraction: snapshot.monthFraction)
         }
@@ -156,11 +168,11 @@ struct BudgetsView: View {
                 amountColor: Color.secondary
             )
             ForEach(snapshot.unbudgetedLines) { line in
-                unbudgetedRow(line, month: snapshot.month)
+                unbudgetedRow(line)
             }
             if snapshot.uncategorizedSpendingCents != 0 {
                 Button {
-                    router.showTransactions(.uncategorized)
+                    showsUncategorized = true
                 } label: {
                     BudgetsCategoryRowLabel(
                         category: nil,
@@ -176,11 +188,11 @@ struct BudgetsView: View {
         .hakiCard()
     }
 
-    private func unbudgetedRow(_ line: BudgetsCategoryLine, month: MonthInterval) -> some View {
+    private func unbudgetedRow(_ line: BudgetsCategoryLine) -> some View {
         let setBudgetLabel = "Set budget for \(line.category.name)"
         return HStack(spacing: 10) {
-            NavigationLink {
-                CategoryDetailView(category: line.category, month: month)
+            Button {
+                openedCategory = line.category
             } label: {
                 BudgetsCategoryRowLabel(
                     category: line.category,
@@ -210,8 +222,8 @@ struct BudgetsView: View {
                 amountColor: snapshot.totalIncomeCents > 0 ? Color.hakiPositive : Color.secondary
             )
             ForEach(snapshot.incomeLines) { line in
-                NavigationLink {
-                    CategoryDetailView(category: line.category, month: snapshot.month)
+                Button {
+                    openedCategory = line.category
                 } label: {
                     BudgetsCategoryRowLabel(
                         category: line.category,
@@ -224,7 +236,7 @@ struct BudgetsView: View {
             }
             if snapshot.uncategorizedIncomeCents != 0 {
                 Button {
-                    router.showTransactions(.uncategorized)
+                    showsUncategorized = true
                 } label: {
                     BudgetsCategoryRowLabel(
                         category: nil,

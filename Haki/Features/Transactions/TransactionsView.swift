@@ -26,7 +26,12 @@ struct TransactionsView: View {
     @Query(sort: [SortDescriptor(\Account.sortOrder), SortDescriptor(\Account.name)])
     private var accounts: [Account]
 
-    @State private var filter: TransactionFilter = .all
+    @State private var filter: TransactionFilter
+    /// Whether this list applies filters sent through `AppRouter.showTransactions`.
+    /// Only the list Home presents does; one pushed from another screen with
+    /// its own filter (Budgets' "Uncategorized", an account's "See all")
+    /// leaves them to that list.
+    private let appliesRouterFilters: Bool
     @State private var searchText = ""
     /// `searchText` once typing pauses: what the list is filtered by, so
     /// each keystroke doesn't refilter and regroup every transaction.
@@ -36,9 +41,21 @@ struct TransactionsView: View {
     @State private var reviewFeedback = 0
     /// Transactions whose detail screen was opened from the list. They stay
     /// listed even if an edit makes them stop matching the filter or search
-    /// (say, marking one reviewed in "Needs review"): removing a row pops the
-    /// detail screen it opened. Cleared when the list shows again.
+    /// (say, marking one reviewed in "Needs review"), so the list doesn't
+    /// change under the open screen. Cleared when the list shows again.
     @State private var pinnedIDs: Set<UUID> = []
+    /// The transaction opened from the list. Pushed from here, not from its
+    /// row, so an edit that moves it to another day (and so another section)
+    /// doesn't pop the detail screen.
+    @State private var openedTransaction: TransactionRecord?
+
+    /// - Parameter initialFilter: The filter to start with, for a list pushed
+    ///   from another screen. `nil` (Home's list) starts with every transaction
+    ///   and applies filters sent through `AppRouter.showTransactions`.
+    init(initialFilter: TransactionFilter? = nil) {
+        _filter = State(initialValue: initialFilter ?? .all)
+        appliesRouterFilters = initialFilter == nil
+    }
 
     private enum Sheet: String, Identifiable {
         case newTransaction
@@ -49,10 +66,16 @@ struct TransactionsView: View {
 
     var body: some View {
         let visible = visibleTransactions
-        // Pushed from Home (AppRouter.showTransactions / HomeDestination.transactions).
+        // Pushed from Home (AppRouter.showTransactions / HomeDestination.transactions),
+        // or with a filter from Budgets and an account's page.
         content(visible: visible)
             .navigationTitle("Transactions")
             .toolbar { toolbarContent }
+            // Outside the list and the empty state, so a row going away (or
+            // the last transaction being deleted) doesn't remove it.
+            .navigationDestination(item: $openedTransaction) { transaction in
+                TransactionDetailView(transaction: transaction)
+            }
         .sheet(item: $activeSheet) { sheet in
             sheetContent(sheet)
         }
@@ -142,12 +165,20 @@ struct TransactionsView: View {
     }
 
     private func row(for transaction: TransactionRecord) -> some View {
-        let transactionID = transaction.id
-        return NavigationLink {
-            TransactionDetailView(transaction: transaction)
-                .onAppear { pin(transactionID) }
+        Button {
+            pin(transaction.id)
+            openedTransaction = transaction
         } label: {
-            TransactionRow(transaction: transaction)
+            HStack(spacing: 8) {
+                TransactionRow(transaction: transaction)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            // List buttons tint unstyled label text with the accent color.
+            .foregroundStyle(.primary)
+            .contentShape(Rectangle())
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
@@ -576,11 +607,14 @@ struct TransactionsView: View {
         }
     }
 
-    /// Applies a filter sent from another tab (`AppRouter.showTransactions`),
-    /// then clears it so it's applied only once.
+    /// Applies a filter sent from another screen or tab (`AppRouter.showTransactions`),
+    /// then clears it so it's applied only once. A list pushed with its own
+    /// filter leaves it to Home's list (see `appliesRouterFilters`).
     private func applyPendingFilter() {
-        guard let pending = router.pendingTransactionFilter else { return }
+        guard appliesRouterFilters, let pending = router.pendingTransactionFilter else { return }
         router.pendingTransactionFilter = nil
+        // Back to the list, so the filtered transactions are what shows.
+        openedTransaction = nil
         pinnedIDs.removeAll()
         filter = pending
         searchText = ""

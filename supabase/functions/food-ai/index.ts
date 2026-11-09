@@ -192,6 +192,15 @@ function clip(value: unknown, maxLength: number, fallback = ""): string {
   return text.length > maxLength ? text.slice(0, maxLength).trimEnd() : text;
 }
 
+/** Cuts to at most `max` UTF-16 units without splitting a surrogate pair. */
+function clipUnits(text: string | null, max: number): string | null {
+  if (!text || text.length <= max) return text;
+  let cut = text.slice(0, max);
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+  return cut.trimEnd() || null;
+}
+
 /** A finite, non-negative number rounded to `digits`, capped at `max`. */
 function amount(value: unknown, max: number, digits = 0): number {
   const n = typeof value === "number" ? value : Number(value);
@@ -429,7 +438,10 @@ async function callClaude(ai: AiConfig, request: ClaudeRequest): Promise<BetaMes
         ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
         : {}),
     },
-    { timeout: request.timeoutMs },
+    // No SDK retries: a retried timeout gets the whole timeout again, which
+    // runs past the gateway's 150 s and the app's own timeouts (and the
+    // quota is spent on an answer nobody receives).
+    { timeout: request.timeoutMs, maxRetries: 0 },
   );
   if (response.stop_reason === "refusal") {
     console.warn(
@@ -606,7 +618,12 @@ async function actionAnalyzeMeal(
   body: JsonObject,
 ): Promise<unknown> {
   const image = readImage(body);
-  const description = optionalString(body, "description", MAX_DESCRIPTION_LENGTH);
+  // The app counts characters, not UTF-16 units (an emoji is two or more):
+  // clip rather than reject, with room for emoji-heavy text of full length.
+  const description = clipUnits(
+    optionalString(body, "description", Number.MAX_SAFE_INTEGER),
+    MAX_DESCRIPTION_LENGTH * 2,
+  );
   if (!image && !description) {
     throw new HttpError(400, "bad_request", "Add a photo or describe what you ate.");
   }
@@ -748,6 +765,8 @@ function readPlace(body: JsonObject): PlaceQuery {
   if (!name) {
     throw new HttpError(400, "bad_request", '"place_name" is required.');
   }
+  // Only a hint for the search: an over-long one (tracking parameters) is dropped.
+  const website = optionalString(body, "website", Number.MAX_SAFE_INTEGER);
   return {
     name,
     address: optionalString(body, "address", 300),
@@ -756,7 +775,7 @@ function readPlace(body: JsonObject): PlaceQuery {
     country: optionalString(body, "country", 2) ?? null,
     latitude: optionalCoordinate(body, "latitude", 90),
     longitude: optionalCoordinate(body, "longitude", 180),
-    website: optionalString(body, "website", 300),
+    website: website !== null && website.length <= 300 ? website : null,
   };
 }
 
@@ -909,6 +928,9 @@ async function researchMenu(ai: AiConfig, place: PlaceQuery): Promise<{ notes: s
 }
 
 async function actionMenu(admin: AdminClient, userId: string, body: JsonObject): Promise<unknown> {
+  // Search plus extraction must end before the gateway cuts the request at
+  // 150 s (a killed function never refunds the quota).
+  const deadline = Date.now() + 140_000;
   const place = readPlace(body);
   const refresh = body.refresh === true;
   const key = placeKey(place);
@@ -944,7 +966,7 @@ async function actionMenu(admin: AdminClient, userId: string, body: JsonObject):
           `Place:\n<place>\n${describePlace(place)}\n</place>\n\nResearch notes:\n<notes>\n${research.notes}\n</notes>`,
       }],
       effort: "low",
-      timeoutMs: EXTRACT_TIMEOUT_MS,
+      timeoutMs: Math.max(5_000, Math.min(EXTRACT_TIMEOUT_MS, deadline - Date.now())),
       schema: MENU_SCHEMA,
     });
     parsed = responseJson(extraction);

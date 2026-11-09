@@ -61,7 +61,8 @@ struct PlacesPlace: Hashable, Identifiable {
             country: country,
             latitude: latitude,
             longitude: longitude,
-            website: url?.absoluteString
+            // Only a hint for the menu search; the server takes at most 300 UTF-16 units.
+            website: url.map(\.absoluteString).flatMap { $0.utf16.count <= 300 ? $0 : nil }
         )
     }
 

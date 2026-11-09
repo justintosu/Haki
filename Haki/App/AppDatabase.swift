@@ -22,6 +22,10 @@ final class AppDatabase {
     /// How many times in a row opening the store has failed.
     private(set) var failedAttempts = 0
 
+    /// Bool in UserDefaults: an in-memory store was used since the on-device
+    /// store last opened (Continue Without Saving).
+    private static let usedTemporaryStoreKey = "database.usedTemporaryStore"
+
     init() {
         open()
     }
@@ -53,6 +57,14 @@ final class AppDatabase {
         for _ in 0..<2 {
             do {
                 let container = try HakiSchema.makeContainer()
+                if UserDefaults.standard.bool(forKey: Self.usedTemporaryStoreKey) {
+                    // A temporary session may have synced Hevy and moved the
+                    // shared sync time on, but this store didn't get those
+                    // copies: copy from scratch (matched by Hevy id, so
+                    // nothing is duplicated).
+                    UserDefaults.standard.removeObject(forKey: HealthSettings.hevyLastSyncKey)
+                    UserDefaults.standard.removeObject(forKey: Self.usedTemporaryStoreKey)
+                }
                 use(container)
                 return
             } catch {
@@ -65,12 +77,13 @@ final class AppDatabase {
     }
 
     /// Continues with an in-memory database so sign-in, the feed and Invest
-    /// keep working. Money data added this session isn't kept; the next launch
+    /// keep working. Data added this session isn't kept; the next launch
     /// tries the on-device store again.
     func continueWithTemporaryData() {
         do {
             let container = try HakiSchema.makeContainer(inMemory: true)
             use(container)
+            UserDefaults.standard.set(true, forKey: Self.usedTemporaryStoreKey)
         } catch {
             failureDescription = String(describing: error)
         }
@@ -85,7 +98,18 @@ final class AppDatabase {
             failureDescription = String(describing: error)
             return
         }
+        Self.forgetStateOfSetAsideStore()
         open()
+    }
+
+    /// UserDefaults that describe the store that was just set aside (the same
+    /// keys "Erase all data" in Settings clears).
+    private static func forgetStateOfSetAsideStore() {
+        let defaults = UserDefaults.standard
+        // Its Hevy copies went with it: the next sync copies them again from the start.
+        defaults.removeObject(forKey: HealthSettings.hevyLastSyncKey)
+        // Owned by Recurring: suggestions dismissed for the old store's transactions.
+        defaults.removeObject(forKey: "dismissedRecurringSuggestions")
     }
 
     private func use(_ container: ModelContainer) {
@@ -163,7 +187,7 @@ struct AppDatabaseRecoveryView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Haki sets the current file aside on this iPhone and starts with no transactions, budgets, bills or accounts. Your profile, posts and brokerage connections aren't affected.")
+            Text("Haki sets the current file aside on this iPhone and starts fresh, with no transactions, budgets, bills or accounts, and no food log, workouts, wardrobe, notes, flashcards or assistant chats. Workouts from Hevy are copied again the next time Haki syncs. Your profile, posts and brokerage connections aren't affected.")
         }
     }
 
@@ -178,7 +202,7 @@ struct AppDatabaseRecoveryView: View {
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
-            Text("Your transactions, budgets, bills and accounts are kept in a file on this iPhone, and that file couldn't be opened. Nothing has been deleted.")
+            Text("Haki keeps your money data, food log, workouts and other on-device data in a file on this iPhone, and that file couldn't be opened. Nothing has been deleted.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             if database.failedAttempts > 1 {
@@ -210,7 +234,7 @@ struct AppDatabaseRecoveryView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
 
-            Text("Sign-in, the feed and Invest work as usual. Money data you add won't be kept, and Haki tries your file again the next time it opens.")
+            Text("Sign-in, the feed and Invest work as usual. Data you add won't be kept, and Haki tries your file again the next time it opens.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -223,7 +247,7 @@ struct AppDatabaseRecoveryView: View {
                 confirmsReset = true
             }
             .font(.body.weight(.semibold))
-            Text("Sets the file aside on this iPhone (it isn't deleted) and starts with empty money data.")
+            Text("Sets the file aside on this iPhone (it isn't deleted) and starts fresh, with no money data, food log, workouts or other on-device data.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

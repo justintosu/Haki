@@ -492,25 +492,33 @@ private struct NutritionTargetRow: View {
     let field: NutritionGoalsField
 
     @State private var text = ""
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-            Spacer(minLength: 8)
-            TextField(title, text: $text)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.trailing)
-                .monospacedDigit()
-                .focused(focus, equals: field)
-                .frame(minWidth: 48, maxWidth: 80)
-                .accessibilityLabel("\(title) target in \(spokenUnit)")
-            Text(unit)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Stepper(title, value: $value, in: range, step: step)
-                .labelsHidden()
-                .accessibilityLabel("\(title) target")
-                .accessibilityValue("\(value) \(spokenUnit)")
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // Large text: the number gets the full width so it's never cut off.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                    HStack(spacing: 8) {
+                        numberField
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        unitText
+                    }
+                    stepper
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Text(title)
+                    Spacer(minLength: 8)
+                    numberField
+                        .multilineTextAlignment(.trailing)
+                        .frame(minWidth: 48, maxWidth: 80)
+                    unitText
+                    stepper
+                }
+            }
         }
         .onAppear {
             text = String(value)
@@ -529,6 +537,27 @@ private struct NutritionTargetRow: View {
                 text = String(value)
             }
         }
+    }
+
+    private var numberField: some View {
+        TextField(title, text: $text)
+            .keyboardType(.numberPad)
+            .monospacedDigit()
+            .focused(focus, equals: field)
+            .accessibilityLabel("\(title) target in \(spokenUnit)")
+    }
+
+    private var unitText: some View {
+        Text(unit)
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+    }
+
+    private var stepper: some View {
+        Stepper(title, value: $value, in: range, step: step)
+            .labelsHidden()
+            .accessibilityLabel("\(title) target")
+            .accessibilityValue("\(value) \(spokenUnit)")
     }
 }
 

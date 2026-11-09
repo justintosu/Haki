@@ -313,8 +313,9 @@ nonisolated private struct HevyCustomTemplateFields: Encodable {
     }
 }
 
-/// Hevy documents `{"id": 123}`; template ids elsewhere are strings, so
-/// both are accepted.
+/// Hevy documents `{"id": 123}`, but exercise_template_id is a string
+/// everywhere else; only a string id is used. Otherwise the caller reloads
+/// the templates and finds the new one by title.
 nonisolated private struct HevyCreatedTemplateResponse: Decodable {
     var id: String?
 
@@ -324,12 +325,6 @@ nonisolated private struct HevyCreatedTemplateResponse: Decodable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let text = try? container.decode(String.self, forKey: .id) {
-            id = text
-        } else if let number = try? container.decode(Int.self, forKey: .id) {
-            id = String(number)
-        } else {
-            id = nil
-        }
+        id = try? container.decode(String.self, forKey: .id)
     }
 }

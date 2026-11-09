@@ -15,9 +15,13 @@ import UIKit
 
 struct FoodLogView: View {
     @AppStorage(HealthSettings.targetsKey) private var targetsData = Data()
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Start of the day being shown.
     @State private var day = Calendar.current.startOfDay(for: .now)
+    /// The day that was today when `day` was last checked, so the log
+    /// follows today past midnight.
+    @State private var shownToday = Calendar.current.startOfDay(for: .now)
     @State private var sheet: FoodLogSheet?
 
     var body: some View {
@@ -41,6 +45,26 @@ struct FoodLogView: View {
         .sheet(item: $sheet) { request in
             sheetContent(for: request)
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { followToday() }
+        }
+        .task {
+            // Also on coming back to the screen (another tab, a pushed
+            // screen), where a day change may have been missed.
+            followToday()
+            for await _ in NotificationCenter.default.notifications(named: .NSCalendarDayChanged) {
+                followToday()
+            }
+        }
+    }
+
+    /// After midnight, moves the log on to the new day if it was showing
+    /// today; a past day the person picked stays.
+    private func followToday() {
+        let today = Calendar.current.startOfDay(for: .now)
+        guard today != shownToday else { return }
+        if day == shownToday { day = today }
+        shownToday = today
     }
 
     @ViewBuilder

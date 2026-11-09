@@ -14,10 +14,13 @@ import SwiftUI
 
 struct NutritionTodayCard: View {
     @AppStorage(HealthSettings.targetsKey) private var targetsData = Data()
+    @Environment(\.scenePhase) private var scenePhase
+    /// When "today" was last checked; moving it on past midnight redraws the card.
+    @State private var now = Date.now
 
     /// The last few months of entries: today's for the totals, all of them
     /// for the streak. The predicate is fixed when the card is created, so
-    /// "today" is picked out in memory and stays right past midnight.
+    /// "today" is picked out in memory (by `now`) and stays right past midnight.
     @Query private var recentEntries: [FoodEntry]
 
     init() {
@@ -32,12 +35,12 @@ struct NutritionTodayCard: View {
 
     var body: some View {
         let calendar = Calendar.current
-        let todays = recentEntries.filter { calendar.isDateInToday($0.eatenAt) }
+        let todays = recentEntries.filter { calendar.isDate($0.eatenAt, inSameDayAs: now) }
         let progress = NutritionProgress(
             consumed: Macros.total(todays.map(\.macros)),
             targets: HealthSettings.targets(from: targetsData)
         )
-        let streak = NutritionStats.loggingStreak(entryDates: recentEntries.map(\.eatenAt))
+        let streak = NutritionStats.loggingStreak(entryDates: recentEntries.map(\.eatenAt), now: now)
 
         NavigationLink {
             FoodLogView()
@@ -46,6 +49,21 @@ struct NutritionTodayCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens your food log")
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { followToday() }
+        }
+        .task {
+            followToday()
+            for await _ in NotificationCenter.default.notifications(named: .NSCalendarDayChanged) {
+                followToday()
+            }
+        }
+    }
+
+    /// Moves `now` on once the day has changed, so the card shows today.
+    private func followToday() {
+        let current = Date.now
+        if !Calendar.current.isDate(current, inSameDayAs: now) { now = current }
     }
 }
 

@@ -28,6 +28,8 @@ struct MealCaptureView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(FoodAIService.self) private var foodAI
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Whether the person agreed to send meals to Haki's server and Anthropic for estimates.
+    @AppStorage(MealCaptureView.foodAIConsentKey) private var foodAIConsent = false
 
     @State private var step: MealCaptureStep = .compose
     @State private var isManual = false
@@ -42,11 +44,14 @@ struct MealCaptureView: View {
     @State private var isEstimating = false
     @State private var estimateTask: Task<Void, Never>?
     @State private var errorMessage: String?
+    @State private var showsFoodAIConsent = false
 
     // Step 2
     @State private var draft = MealReviewDraft()
 
     private static let descriptionLimit = 600
+    /// Bool in UserDefaults: the one-time "send this meal to Anthropic" permission.
+    static let foodAIConsentKey = "health.foodAIConsent"
 
     var body: some View {
         NavigationStack {
@@ -132,6 +137,15 @@ struct MealCaptureView: View {
             if isEstimating {
                 MealEstimatingOverlay(image: photo?.image, onCancel: cancelEstimate)
             }
+        }
+        .alert("Send this meal for an estimate?", isPresented: $showsFoodAIConsent) {
+            Button("Allow") {
+                foodAIConsent = true
+                startEstimate()
+            }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("To estimate nutrition, your photo and description are sent to Haki's server and to Anthropic's Claude. You can also enter a meal yourself.")
         }
     }
 
@@ -237,7 +251,7 @@ struct MealCaptureView: View {
                     .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Try again") {
-                    startEstimate()
+                    requestEstimate()
                 }
                 .font(.subheadline.weight(.semibold))
                 .disabled(!canEstimate)
@@ -250,7 +264,7 @@ struct MealCaptureView: View {
     private var estimateButton: some View {
         VStack(spacing: 8) {
             Button {
-                startEstimate()
+                requestEstimate()
             } label: {
                 Label("Estimate calories & protein", systemImage: "sparkles")
                     .font(.headline)
@@ -265,6 +279,10 @@ struct MealCaptureView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
+            Text("Photos and descriptions are sent to Anthropic (Claude) for the estimate.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
     }
 
@@ -346,13 +364,9 @@ struct MealCaptureView: View {
     private func useCameraImage(_ image: UIImage) {
         photoItem = nil
         photoError = nil
-        guard let data = image.jpegData(compressionQuality: 0.9) else {
-            photoError = "Couldn't use that photo. Try again."
-            return
-        }
         isPreparingPhoto = true
         Task {
-            let prepared = await MealCapturePhoto.make(from: data)
+            let prepared = await MealCapturePhoto.make(from: image)
             isPreparingPhoto = false
             // A photo chosen from the library in the meantime wins.
             guard photoItem == nil else { return }
@@ -374,6 +388,16 @@ struct MealCaptureView: View {
     }
 
     // MARK: Estimate
+
+    /// Asks once before the first meal is sent to the AI, then estimates.
+    private func requestEstimate() {
+        guard canEstimate else { return }
+        if foodAIConsent {
+            startEstimate()
+        } else {
+            showsFoodAIConsent = true
+        }
+    }
 
     private func startEstimate() {
         guard canEstimate else { return }
@@ -454,6 +478,15 @@ private struct MealCapturePhoto {
     let uploadJPEG: Data
     let thumbnailJPEG: Data
     let image: UIImage
+
+    /// The camera's full-size photo: encoded off the main actor, then prepared.
+    static func make(from image: UIImage) async -> MealCapturePhoto? {
+        let data = await Task.detached(priority: .userInitiated) {
+            image.jpegData(compressionQuality: 0.9)
+        }.value
+        guard let data else { return nil }
+        return await make(from: data)
+    }
 
     static func make(from data: Data) async -> MealCapturePhoto? {
         guard let upload = await ImageUpload.makeJPEG(from: data, maxDimension: 1280, quality: 0.75) else { return nil }

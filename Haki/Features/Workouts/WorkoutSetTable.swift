@@ -48,6 +48,13 @@ struct WorkoutExerciseSection: View {
 
     @Environment(\.modelContext) private var modelContext
 
+    /// The largest text size the set rows and their column titles use. A
+    /// row is one line of fixed-width columns (scaled with Dynamic Type), so
+    /// larger sizes would push the fields and the done button out of the
+    /// cell. Applied where the views are made, so their `@ScaledMetric`
+    /// widths are capped too.
+    static let largestSetRowTypeSize: DynamicTypeSize = .xLarge
+
     var body: some View {
         let sets = exercise.orderedSets
         let labels = Self.setLabels(sets)
@@ -65,6 +72,7 @@ struct WorkoutExerciseSection: View {
             )
             notesField
             WorkoutSetColumnsHeader(kind: kind, weightUnit: weightUnit, distanceUnit: distanceUnit)
+                .dynamicTypeSize(...Self.largestSetRowTypeSize)
             ForEach(Array(sets.enumerated()), id: \.element.id) { index, setRecord in
                 setRow(setRecord, index: index, label: labels[setRecord.id] ?? "\(index + 1)", kind: kind)
             }
@@ -84,6 +92,7 @@ struct WorkoutExerciseSection: View {
             focus: focus,
             onToggle: { onToggleSet(setRecord) }
         )
+        .dynamicTypeSize(...Self.largestSetRowTypeSize)
         .listRowBackground(setRecord.isCompleted ? Color.hakiPositive.opacity(0.14) : Color.hakiCardBackground)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
@@ -232,7 +241,8 @@ private struct WorkoutExerciseHeaderRow: View {
 // MARK: - Columns
 
 /// "SET  PREVIOUS  KG  REPS  ✓". Its column widths match `WorkoutSetRow`'s
-/// and scale with Dynamic Type.
+/// and scale with Dynamic Type, up to
+/// `WorkoutExerciseSection.largestSetRowTypeSize` (applied by the section).
 private struct WorkoutSetColumnsHeader: View {
     let kind: ExerciseKind
     let weightUnit: WeightUnit

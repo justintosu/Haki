@@ -404,6 +404,10 @@ nonisolated enum AuthServiceError: LocalizedError, Hashable {
         // Removes the local session before calling the server, so this signs
         // out even when offline.
         try? await client.auth.signOut(scope: .local)
+        // The SDK drops the session (and the observer resets state) before the
+        // logout request. If someone signed in again while it was in flight,
+        // keep them signed in.
+        guard client.auth.currentSession == nil else { return }
         if let uid { Self.removeCachedProfile(for: uid) }
         resetToSignedOut()
     }

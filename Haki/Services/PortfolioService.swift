@@ -193,7 +193,9 @@ import Supabase
 
     /// Pulls fresh data from the brokerages (edge function), then refreshes.
     func sync() async throws {
-        try await performSync(reportsErrors: true)
+        // Its own task, so a pull to refresh that SwiftUI cancels (screen left
+        // or redrawn) doesn't stop the sync halfway or skip the reload.
+        try await Task { try await self.performSync(reportsErrors: true) }.value
     }
 
     /// Starts a background sync when a connection hasn't synced for about half

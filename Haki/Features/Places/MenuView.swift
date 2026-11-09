@@ -16,9 +16,12 @@ struct MenuView: View {
     let place: PlacesPlace
 
     @Environment(FoodAIService.self) private var foodAI
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HealthSettings.targetsKey) private var targetsData = Data()
     /// Yesterday and today; filtered to today in memory so it stays right past midnight.
     @Query private var recentEntries: [FoodEntry]
+    /// When "today" was last checked; moving it on past midnight redraws the best picks.
+    @State private var now = Date.now
 
     @State private var loadState: MenuLoadState = .loading
     @State private var loadRequest = MenuLoadRequest()
@@ -64,6 +67,15 @@ struct MenuView: View {
         .sensoryFeedback(.success, trigger: loggedCount)
         .overlay(alignment: .top) { toastView }
         .task(id: toast) { await hideToastLater() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { followToday() }
+        }
+        .task {
+            followToday()
+            for await _ in NotificationCenter.default.notifications(named: .NSCalendarDayChanged) {
+                followToday()
+            }
+        }
     }
 
     // MARK: Content
@@ -151,10 +163,17 @@ struct MenuView: View {
 
     /// Today's calorie target minus what's logged today (negative when over).
     private var remainingCalories: Int {
-        let today = recentEntries.filter { Calendar.current.isDateInToday($0.eatenAt) }
+        let calendar = Calendar.current
+        let today = recentEntries.filter { calendar.isDate($0.eatenAt, inSameDayAs: now) }
         let consumed = Macros.total(today.map(\.macros))
         let targets = HealthSettings.targets(from: targetsData)
         return NutritionProgress(consumed: consumed, targets: targets).remainingCalories
+    }
+
+    /// Moves `now` on once the day has changed, so the best picks use today's calories.
+    private func followToday() {
+        let current = Date.now
+        if !Calendar.current.isDate(current, inSameDayAs: now) { now = current }
     }
 
     // MARK: Loading
@@ -253,11 +272,23 @@ private enum MenuQuickFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The "Under …" limit in whole units of the menu's currency, or nil to
+    /// hide the chip (15 yen or rupees would leave nothing on the list).
+    static func priceLimit(currency: String) -> Double? {
+        switch currency {
+        case "USD", "EUR", "GBP", "CAD", "AUD", "NZD", "CHF", "SGD": 15
+        case "JPY": 1_500
+        case "KRW": 15_000
+        case "INR": 500
+        default: nil
+        }
+    }
+
     func title(currency: String) -> String {
         switch self {
         case .highProtein: "High protein"
         case .under600: "Under 600 kcal"
-        case .underPrice: "Under \(MenuFormat.wholePrice(15, currency: currency))"
+        case .underPrice: "Under \(MenuFormat.wholePrice(Self.priceLimit(currency: currency) ?? 15, currency: currency))"
         case .vegetarian: MenuTag.vegetarian.title
         case .vegan: MenuTag.vegan.title
         case .lowCarb: MenuTag.lowCarb.title
@@ -452,7 +483,9 @@ private struct MenuReportContent: View {
         filter.query = dishQuery
         if activeFilters.contains(.highProtein) { filter.minProteinG = 30 }
         if activeFilters.contains(.under600) { filter.maxCalories = 600 }
-        if activeFilters.contains(.underPrice) { filter.maxPriceCents = 1_500 }
+        if activeFilters.contains(.underPrice), let limit = MenuQuickFilter.priceLimit(currency: currency) {
+            filter.maxPriceCents = Int((limit * 100).rounded())
+        }
         var tags = Set<MenuTag>()
         for item in activeFilters {
             if let tag = item.tag { tags.insert(tag) }
@@ -469,7 +502,7 @@ private struct MenuReportContent: View {
             searchField
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    ForEach(MenuQuickFilter.allCases) { item in
+                    ForEach(quickFilters) { item in
                         PlacesChipButton(
                             title: item.title(currency: currency),
                             systemImage: item.systemImage,
@@ -520,6 +553,12 @@ private struct MenuReportContent: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// The chips to show: no price chip for a currency without a sensible limit.
+    private var quickFilters: [MenuQuickFilter] {
+        let hasPriceLimit = MenuQuickFilter.priceLimit(currency: currency) != nil
+        return MenuQuickFilter.allCases.filter { $0 != .underPrice || hasPriceLimit }
     }
 
     private func toggle(_ item: MenuQuickFilter) {

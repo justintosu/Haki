@@ -208,6 +208,20 @@ struct SettingsView: View {
                 SettingsIconLabel("Community Guidelines", systemImage: "person.2.fill", tint: .green)
             }
 
+            if let url = AppInfo.privacyPolicyURL {
+                Link(destination: url) {
+                    SettingsIconLabel("Privacy Policy", systemImage: "hand.raised.fill", tint: .blue)
+                }
+                .accessibilityHint("Opens Haki's privacy policy")
+            }
+
+            if let url = AppInfo.termsURL {
+                Link(destination: url) {
+                    SettingsIconLabel("Terms of Use", systemImage: "doc.text.fill", tint: .gray)
+                }
+                .accessibilityHint("Opens Haki's terms of use")
+            }
+
             if let supportURL {
                 Link(destination: supportURL) {
                     SettingsIconLabel("Contact support", systemImage: "envelope.fill", tint: .blue)
