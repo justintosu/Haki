@@ -159,7 +159,7 @@ final class YouFlowTests: HakiUITestCase {
 
     /// One of the Ask Haki card's starter questions.
     private func suggestionButton() -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "label IN %@", Self.suggestedQuestions)).firstMatch
+        app.buttons.matching(NSPredicate(format: "label IN %@", argumentArray: [Self.suggestedQuestions])).firstMatch
     }
 
     /// A card's linked top part, whose label starts with its title

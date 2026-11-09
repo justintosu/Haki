@@ -208,7 +208,9 @@ final class WardrobeFlowTests: HakiUITestCase {
         guard expectScreen("Add piece") else { return }
 
         let name = "Striped linen shirt"
+        // Under the photo section; the form is lazy, so scroll it into being.
         let nameField = textField(placeholder: "Name, e.g. Navy crew-neck sweater")
+        scrollTo(nameField, maxSwipes: 4)
         guard tapElement(nameField, "the piece's name field") else { return }
         nameField.typeText(name)
         dismissKeyboard()

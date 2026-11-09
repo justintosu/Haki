@@ -45,7 +45,7 @@ final class AssistantFlowTests: HakiUITestCase {
         field.typeText(question)
         let send = app.buttons["Send"]
         XCTAssertTrue(send.waitForExistence(timeout: 5), "No Send button")
-        XCTAssertTrue(send.isEnabled, "Send stays disabled after typing a question")
+        XCTAssertTrue(waitUntil(timeout: 3) { send.isEnabled }, "Send stays disabled after typing a question")
         expectStillRunning("typing a question")
         snap("A02 Question typed")
         send.tap()
@@ -111,7 +111,7 @@ final class AssistantFlowTests: HakiUITestCase {
         guard expectScreen("You") else { return }
 
         // The card shows three of the starter questions (a different set each day).
-        let suggestion = app.buttons.matching(NSPredicate(format: "label IN %@", Self.suggestedQuestions)).firstMatch
+        let suggestion = app.buttons.matching(NSPredicate(format: "label IN %@", argumentArray: [Self.suggestedQuestions])).firstMatch
         guard suggestion.waitForExistence(timeout: 8) else {
             XCTFail("The Ask Haki card shows no starter question")
             return
