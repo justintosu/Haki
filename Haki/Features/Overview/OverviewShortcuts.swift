@@ -65,8 +65,10 @@ struct OverviewShortcutsRow: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
+                        // One line, shrunk to fit: four tiles share the row, and a
+                        // second line would break "Transactions" mid-word.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
