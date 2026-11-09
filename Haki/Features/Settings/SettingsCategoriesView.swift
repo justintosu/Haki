@@ -153,20 +153,21 @@ private struct SettingsCategoryRow: View {
     var body: some View {
         HStack(spacing: 12) {
             CategoryIcon(category: category, size: 34)
+            // Concrete colors: List buttons tint hierarchical styles (.primary/.secondary) with the accent color.
             VStack(alignment: .leading, spacing: 2) {
                 Text(category.name)
                     .font(.body)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.primary)
                 Text(detailText)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondary)
             }
             Spacer(minLength: 8)
             if let budgetText {
                 Text(budgetText)
                     .font(.subheadline.weight(.medium))
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondary)
             }
         }
         .padding(.vertical, 2)
@@ -180,11 +181,12 @@ private struct SettingsCategoryRow: View {
         return Money.format(budget, showsCents: false) + "/mo"
     }
 
+    /// "24 transactions" (the budget shows on the right), or
+    /// "No budget · 24 transactions" for spending categories without one.
     private var detailText: String {
         let count = SettingsFormat.count(category.transactions.count, "transaction", "transactions")
-        guard category.kind == .expense else { return count }
-        let budget = category.hasBudget ? "Monthly budget" : "No budget"
-        return budget + " · " + count
+        guard category.kind == .expense, !category.hasBudget else { return count }
+        return "No budget · " + count
     }
 }
 

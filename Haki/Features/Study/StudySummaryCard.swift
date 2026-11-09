@@ -56,9 +56,8 @@ struct StudySummaryCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "play.fill")
                     .accessibilityHidden(true)
-                Text("Study now")
-                    .fontWeight(.semibold)
-                Text("· \(deck.name)")
+                // One Text, so the spaces either side of the "·" match.
+                Text("\(Text("Study now").fontWeight(.semibold)) · \(deck.name)")
                     .lineLimit(1)
             }
             .font(.subheadline)

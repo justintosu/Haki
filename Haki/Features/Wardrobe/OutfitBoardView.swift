@@ -3,8 +3,8 @@
 //  Haki
 //
 //  An outfit as a board of its pieces: drag to move, pinch to resize, twist
-//  to rotate, tap to select (which brings the piece to the front and shows
-//  its remove button). Positions are stored as fractions of the board, so
+//  to rotate, tap or drag to select (which brings the piece to the front and
+//  shows its remove button). Positions are stored as fractions of the board, so
 //  the board looks the same at any size. Leaving the board renders a
 //  snapshot for the outfit grids. Pushed from the wardrobe.
 //
@@ -185,7 +185,8 @@ struct OutfitBoardView: View {
                 Text(wearText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
@@ -213,9 +214,10 @@ struct OutfitBoardView: View {
 
     private var wearText: String {
         let pieces = WardrobeFormat.pieces(visiblePieces.count)
-        let worn = WardrobeFormat.timesWorn(outfit.timesWorn)
-        guard outfit.lastWornAt != nil else { return "\(pieces) · \(worn)" }
-        return "\(pieces) · \(worn) · \(WardrobeFormat.lastWorn(outfit.lastWornAt))"
+        guard outfit.lastWornAt != nil else {
+            return "\(pieces) · \(WardrobeFormat.timesWorn(outfit.timesWorn))"
+        }
+        return "\(pieces) · \(WardrobeFormat.wears(outfit.timesWorn)) · \(WardrobeFormat.lastWorn(outfit.lastWornAt))"
     }
 
     private var completenessHint: String? {
@@ -253,7 +255,7 @@ struct OutfitBoardView: View {
             boardContent(size: proxy.size)
         }
         .aspectRatio(Self.boardAspectRatio, contentMode: .fit)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private func boardContent(size: CGSize) -> some View {
@@ -272,7 +274,7 @@ struct OutfitBoardView: View {
                         boardSize: size,
                         isSelected: selectedPieceID == piece.id,
                         onTap: { tap(piece) },
-                        onDragStart: { selectedPieceID = piece.id },
+                        onDragStart: { tap(piece) },
                         onCommit: { commitEdit() },
                         onRemove: { remove(piece) }
                     )

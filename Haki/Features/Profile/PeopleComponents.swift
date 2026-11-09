@@ -102,7 +102,8 @@ struct FollowButton: View {
 
 // MARK: - Rows
 
-/// Avatar, name and @username (tapping opens the profile), with a Follow button.
+/// Avatar, name, @username (shown only when it differs from the name) and
+/// follower count (tapping opens the profile), with a Follow button.
 struct PeopleRow: View {
     let profile: UserProfile
     let showsFollowButton: Bool
@@ -147,10 +148,22 @@ struct PeopleRow: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                // One line when it fits; otherwise handle and follower count on
+                // their own lines, so the count is never the part cut off.
+                ViewThatFits(in: .horizontal) {
+                    Text(subtitle)
+                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 0) {
+                        if let handleText {
+                            Text(handleText)
+                                .lineLimit(1)
+                        }
+                        Text(followerCountText)
+                            .lineLimit(1)
+                    }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -158,10 +171,24 @@ struct PeopleRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var subtitle: String {
+    /// "@username", or nil when there's no display name and the title above
+    /// already shows the username.
+    private var handleText: String? {
+        // `UserProfile.name` falls back to the username, so this also covers a
+        // display name identical to it.
+        guard profile.name != profile.username else { return nil }
+        return "@\(profile.username)"
+    }
+
+    private var followerCountText: String {
         let count = profile.followerCount.formatted(.number.notation(.compactName))
         let noun = profile.followerCount == 1 ? "follower" : "followers"
-        return "@\(profile.username) · \(count) \(noun)"
+        return "\(count) \(noun)"
+    }
+
+    private var subtitle: String {
+        guard let handleText else { return followerCountText }
+        return "\(handleText) · \(followerCountText)"
     }
 }
 

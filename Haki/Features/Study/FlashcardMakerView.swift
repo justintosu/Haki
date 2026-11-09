@@ -304,6 +304,7 @@ private struct FlashcardMakerDraft: Identifiable {
 /// Keep toggle plus editable front and back.
 private struct FlashcardMakerDraftRow: View {
     @Binding var draft: FlashcardMakerDraft
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -318,14 +319,27 @@ private struct FlashcardMakerDraftRow: View {
             .accessibilityLabel("Keep this card")
             .accessibilityValue(draft.keep ? "On" : "Off")
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
                 TextField("Question", text: $draft.front, axis: .vertical)
                     .font(.body.weight(.semibold))
-                Divider()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 8)
+                    // Drawn over the field rather than as its own stack item: an inline
+                    // Divider vanished on drafts whose question wraps to two lines.
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(Color(uiColor: .separator))
+                            .frame(height: 1 / displayScale)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
                 TextField("Answer", text: $draft.back, axis: .vertical)
                     .font(.body)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(draft.keep ? 1 : 0.45)
         }
         .padding(.vertical, 4)

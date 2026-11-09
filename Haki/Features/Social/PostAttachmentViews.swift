@@ -51,9 +51,15 @@ struct PostPortfolioAttachmentView: View {
                     )
                 }
             }
-            Label("Percentages only. Amounts are never shared.", systemImage: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // An HStack rather than a Label: inside a Form (the compose preview)
+            // a Label's icon gets a wide fixed column and drifts from its text.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .accessibilityHidden(true)
+                Text("Percentages only. Amounts are never shared.")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -64,9 +70,13 @@ struct PostPortfolioAttachmentView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Label("Portfolio", systemImage: "chart.pie.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+            HStack(spacing: 8) {
+                Image(systemName: "chart.pie.fill")
+                    .accessibilityHidden(true)
+                Text("Portfolio")
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.accentColor)
             Spacer(minLength: 8)
             if let gain = portfolio.totalGainPct {
                 VStack(alignment: .trailing, spacing: 0) {

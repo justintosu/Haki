@@ -165,7 +165,12 @@ struct NoteEditorView: View {
     }
 
     private var wordCountText: String {
-        let count = note.body.split(whereSeparator: { $0.isWhitespace }).count
+        // Count words, not Markdown syntax: a token with no letter or digit
+        // ("-", "*", "#", "**", ">", "---") is a list marker, heading mark or rule.
+        let count = note.body
+            .split(whereSeparator: { $0.isWhitespace })
+            .filter { token in token.contains { $0.isLetter || $0.isNumber } }
+            .count
         return count == 1 ? "1 word" : "\(count.formatted()) words"
     }
 

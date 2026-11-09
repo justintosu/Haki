@@ -137,6 +137,21 @@ enum InvestStyle {
         }
     }
 
+    /// The label for a single security of this class (the header pill on a
+    /// holding). `AssetClass.displayName` stays plural because it names a
+    /// group in the allocation legend.
+    static func singularName(for assetClass: AssetClass) -> String {
+        switch assetClass {
+        case .stocks: "Stock"
+        case .etfs: "ETF"
+        case .funds: "Mutual fund"
+        case .crypto: "Crypto"
+        case .bonds: "Bond"
+        case .cash: "Cash"
+        case .other: "Other"
+        }
+    }
+
     /// Green for gains, red for losses, gray for flat or unknown.
     static func gainColor(_ value: Double?) -> Color {
         guard let value, value != 0, value.isFinite else { return .secondary }

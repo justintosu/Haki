@@ -217,6 +217,8 @@ private struct FoodLogDayList: View {
         List {
             Section {
                 FoodLogDaySwitcher(day: day, onSelectDay: onSelectDay)
+                    // Its separator would start under the day's name, not at the card's edge.
+                    .listRowSeparator(.hidden)
                 NutritionDaySummary(progress: progress)
                     .padding(.vertical, 6)
             }
@@ -487,12 +489,20 @@ private struct FoodLogMealHeader: View {
     let day: Date
     let onPresent: (FoodLogSheet) -> Void
 
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth: CGFloat = 24
+
     var body: some View {
         HStack(spacing: 8) {
-            Label(meal.title, systemImage: meal.systemImage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .accessibilityAddTraits(.isHeader)
+            Label {
+                Text(meal.title)
+            } icon: {
+                // Meal symbols differ in width; a fixed icon column lines the titles up.
+                Image(systemName: meal.systemImage)
+                    .frame(width: iconWidth, alignment: .center)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+            .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             if hasEntries {
                 Text(FoodFormat.kcal(calories))
@@ -573,13 +583,14 @@ private struct FoodLogWeekChart: View {
                         .foregroundStyle(.secondary)
                 }
         }
+        .chartYScale(domain: 0...yTop)
         .chartXAxis {
             AxisMarks(values: .stride(by: .day)) { _ in
                 AxisValueLabel(format: .dateTime.weekday(.narrow), centered: true)
             }
         }
         .chartYAxis {
-            AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { _ in
+            AxisMarks(position: .trailing, values: [0, Double(targetCalories)]) { _ in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
                 AxisValueLabel()
             }
@@ -587,6 +598,14 @@ private struct FoodLogWeekChart: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Calories over the last 7 days")
         .accessibilityValue(accessibilitySummary)
+    }
+
+    /// Scales to the bigger of the target and the busiest day, with headroom
+    /// for the "Target" label, so the bars aren't squeezed under an empty
+    /// band of the chart.
+    private var yTop: Double {
+        let highest = max(Double(targetCalories), totals.map(\.calories).max() ?? 0)
+        return max(highest * 1.2, 100)
     }
 
     private var accessibilitySummary: String {

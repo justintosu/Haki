@@ -289,10 +289,11 @@ struct WardrobeItemCard: View {
                     }
                 }
             VStack(alignment: .leading, spacing: 2) {
+                // Reserve two lines so every card in a grid row is the same height.
                 Text(item.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                 Text(subtitle)
                     .font(.caption)
@@ -451,10 +452,11 @@ struct WardrobeOutfitCard: View {
                     }
                 }
             VStack(alignment: .leading, spacing: 2) {
+                // Reserve two lines so every card in a grid row is the same height.
                 Text(outfit.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                 Text(subtitle)
                     .font(.caption)

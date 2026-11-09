@@ -38,11 +38,10 @@ struct ProfilePostsGrid: View {
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-/// One square grid tile.
+/// One square grid tile with rounded corners.
 struct ProfilePostTile: View {
     let post: FeedPost
 
@@ -59,7 +58,9 @@ struct ProfilePostTile: View {
             .overlay(alignment: .topTrailing) {
                 kindBadge
             }
-            .clipped()
+            // Each tile is rounded on its own, so a row with fewer than three
+            // tiles doesn't end in a square corner.
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityText)

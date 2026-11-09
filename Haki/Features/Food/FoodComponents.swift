@@ -189,6 +189,7 @@ struct NutritionProteinBar: View {
     private var statusLabel: some View {
         if progress.hasHitProtein {
             Label("Protein goal reached", systemImage: "checkmark.circle.fill")
+                .labelStyle(CompactLabelStyle(spacing: 4))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.hakiPositive)
         } else {
@@ -345,6 +346,7 @@ struct FoodSourceTag: View {
     var body: some View {
         if let title {
             Label(title, systemImage: systemImage)
+                .labelStyle(CompactLabelStyle())
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
                 .padding(.horizontal, 7)
@@ -377,7 +379,8 @@ struct FoodSourceTag: View {
     }
 }
 
-/// One logged food: photo or icon, name, portion, "520 kcal · 38 g protein", source tag and time.
+/// One logged food: photo or icon, name, portion, "520 kcal · 38 g protein", source tag and time
+/// (or, with `showsDate`, the day: "Today", "Yesterday", "Nov 3" or "Nov 3, 2025").
 struct FoodEntryRow: View {
     let entry: FoodEntry
     var showsTime: Bool = true
@@ -416,9 +419,17 @@ struct FoodEntryRow: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// "8:05 AM", or with `showsDate` "Today", "Yesterday", "Nov 3" or "Nov 3, 2025".
     private var timeText: String {
         if showsDate {
-            return entry.eatenAt.formatted(.dateTime.month(.abbreviated).day())
+            let calendar = Calendar.current
+            let date = entry.eatenAt
+            if calendar.isDateInToday(date) { return "Today" }
+            if calendar.isDateInYesterday(date) { return "Yesterday" }
+            if calendar.isDate(date, equalTo: .now, toGranularity: .year) {
+                return date.formatted(.dateTime.month(.abbreviated).day())
+            }
+            return date.formatted(.dateTime.month(.abbreviated).day().year())
         }
         return entry.eatenAt.formatted(.dateTime.hour().minute())
     }

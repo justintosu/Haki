@@ -71,6 +71,10 @@ struct TransactionRow: View {
     let transaction: TransactionRecord
     /// Show the date under the merchant (for lists not grouped by day).
     var showsDate: Bool = false
+    /// Show the category (off where every row shares one, like a category's page).
+    var showsCategory: Bool = true
+    /// Show the account (off on the account's own page, whose title already says it).
+    var showsAccount: Bool = true
 
     var body: some View {
         HStack(spacing: 12) {
@@ -88,10 +92,7 @@ struct TransactionRow: View {
                             .background(.quaternary, in: Capsule())
                     }
                 }
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                subtitleLine
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
@@ -109,11 +110,37 @@ struct TransactionRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var subtitle: String {
+    /// "Nov 3 · Groceries · Everyday Checking". When that doesn't fit on one
+    /// line, the account is dropped rather than cut off mid-word after a " · ";
+    /// VoiceOver always reads the full line.
+    @ViewBuilder
+    private var subtitleLine: some View {
+        let full = subtitle(includingAccount: true)
+        let short = subtitle(includingAccount: false)
+        Group {
+            if short.isEmpty || short == full {
+                Text(full)
+                    .lineLimit(1)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    Text(full)
+                        .lineLimit(1)
+                    Text(short)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(full)
+    }
+
+    private func subtitle(includingAccount: Bool) -> String {
         var parts: [String] = []
         if showsDate { parts.append(transaction.date.formatted(.dateTime.month(.abbreviated).day())) }
-        parts.append(transaction.category?.name ?? "Uncategorized")
-        if let account = transaction.account { parts.append(account.name) }
+        if showsCategory { parts.append(transaction.category?.name ?? "Uncategorized") }
+        if includingAccount, showsAccount, let account = transaction.account { parts.append(account.name) }
         return parts.joined(separator: " · ")
     }
 }
@@ -301,6 +328,23 @@ struct AccountPicker: View {
             ForEach(accounts) { account in
                 Text(account.name).tag(Account?.some(account))
             }
+        }
+    }
+}
+
+// MARK: - Compact label
+
+/// Icon and title close together, for small captions and capsule tags. A plain
+/// Label inside a List/Form row gets the list's wide icon column (and moves the
+/// row separator to its title); this keeps it compact everywhere.
+struct CompactLabelStyle: LabelStyle {
+    var spacing: CGFloat = 3
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: spacing) {
+            configuration.icon
+                .accessibilityHidden(true)
+            configuration.title
         }
     }
 }

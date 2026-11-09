@@ -3,7 +3,7 @@
 //  Haki
 //
 //  Small views shared by the places and menu screens: toggle chips, the
-//  tinted category icon and the map pin.
+//  tinted category icon, the map pin and the map preview's dot.
 //
 
 import Foundation
@@ -96,6 +96,23 @@ struct PlacesMapPin: View {
     }
 }
 
+/// A small dot for a place on the list-mode map preview, where full pins
+/// would pile up in the 180 pt frame. Not tappable: the expand button opens
+/// the full map, which has the real pins. Hidden from VoiceOver because the
+/// list below names every place.
+struct PlacesMapDot: View {
+    let isSelected: Bool
+
+    var body: some View {
+        Circle()
+            .fill(isSelected ? Color.accentColor : Color.orange)
+            .frame(width: 12, height: 12)
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .shadow(color: Color.black.opacity(0.2), radius: 1.5, y: 0.5)
+            .accessibilityHidden(true)
+    }
+}
+
 #Preview {
     VStack(alignment: .leading, spacing: 16) {
         HStack {
@@ -107,6 +124,8 @@ struct PlacesMapPin: View {
             PlacesCategoryIcon(systemImage: "cart.fill", tint: .green, size: 52)
             PlacesMapPin(name: "Green Fork Kitchen", systemImage: "fork.knife", isSelected: false) {}
             PlacesMapPin(name: "Corner Café", systemImage: "cup.and.saucer.fill", isSelected: true) {}
+            PlacesMapDot(isSelected: false)
+            PlacesMapDot(isSelected: true)
         }
     }
     .padding()

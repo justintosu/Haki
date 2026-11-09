@@ -45,6 +45,7 @@ struct MealCaptureView: View {
     @State private var estimateTask: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var showsFoodAIConsent = false
+    @FocusState private var isDescriptionFocused: Bool
 
     // Step 2
     @State private var draft = MealReviewDraft()
@@ -129,8 +130,12 @@ struct MealCaptureView: View {
         .navigationTitle("Snap a meal")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+            // While estimating, the overlay's own Cancel (which only stops the
+            // estimate) is the only one, matching interactiveDismissDisabled.
+            if !isEstimating {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
             }
         }
         .overlay {
@@ -224,6 +229,7 @@ struct MealCaptureView: View {
             Text(photo == nil ? "Describe what you ate" : "Add details (optional)")
                 .font(.headline)
             TextField("e.g. 2 eggs, toast with butter, black coffee", text: $descriptionText, axis: .vertical)
+                .focused($isDescriptionFocused)
                 .lineLimit(3...6)
                 .padding(12)
                 .background(Color.hakiBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -402,6 +408,8 @@ struct MealCaptureView: View {
 
     private func startEstimate() {
         guard canEstimate else { return }
+        // The overlay covers the description, so the keyboard has nothing to type into.
+        isDescriptionFocused = false
         estimateTask?.cancel()
         errorMessage = nil
         isEstimating = true
@@ -742,14 +750,18 @@ private struct MealReviewForm: View {
                 VStack(alignment: .leading, spacing: 6) {
                     TextField("Meal name", text: $draft.title)
                         .font(.headline)
+                        .mealFieldBox()
                         .focused($focus, equals: .title)
                         .accessibilityLabel("Meal name")
                     Label(draft.confidence.title, systemImage: "sparkles")
+                        .labelStyle(CompactLabelStyle(spacing: 4))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.purple)
                         .accessibilityLabel("Confidence: \(draft.confidence.title)")
                 }
             }
+            // The separator would start at the title text, leaving a gap under the photo.
+            .listRowSeparator(.hidden)
             MealTotalsRow(totals: draft.totals)
         }
     }
@@ -775,10 +787,10 @@ private struct MealReviewForm: View {
         } header: {
             Text("What's in it")
         } footer: {
+            // Each row has its own red remove button (swipe-to-delete still works),
+            // so only explain what's needed when the list is empty.
             if draft.items.isEmpty {
                 Text("Add at least one item to save.")
-            } else {
-                Text("Swipe left on an item to remove it.")
             }
         }
     }
@@ -901,6 +913,7 @@ private struct MealItemEditorRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 TextField("Item, e.g. Rice", text: $item.name)
                     .font(.body.weight(.semibold))
+                    .mealFieldBox()
                     .focused(focus, equals: .name(item.id))
                     .accessibilityLabel("Item name")
                 Button(role: .destructive) {
@@ -915,7 +928,7 @@ private struct MealItemEditorRow: View {
             }
             TextField("Portion, e.g. 1 cup", text: $item.portion)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .mealFieldBox()
                 .focused(focus, equals: .portion(item.id))
                 .accessibilityLabel("Portion")
             numberFields
@@ -988,12 +1001,20 @@ private struct MealNumberField: View {
                 .keyboardType(.decimalPad)
                 .monospacedDigit()
                 .focused(focus, equals: field)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color.hakiBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .mealFieldBox()
                 .accessibilityLabel(spokenTitle)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private extension View {
+    /// The gray box that marks a field in the review as editable.
+    func mealFieldBox() -> some View {
+        self
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color.hakiBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

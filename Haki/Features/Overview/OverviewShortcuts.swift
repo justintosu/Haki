@@ -24,7 +24,7 @@ struct OverviewShortcutsRow: View {
                 tiles
             }
         } else {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 tiles
             }
         }
@@ -62,17 +62,21 @@ struct OverviewShortcutsRow: View {
                 VStack(spacing: 8) {
                     icon(systemImage, tint: tint)
                     Text(title)
-                        .font(.subheadline.weight(.medium))
+                        // Footnote so all four titles fit at the default text
+                        // size and match: a per-tile shrink only ever hits
+                        // "Transactions", which then looks smaller than its
+                        // neighbours. One line (a second line would break
+                        // "Transactions" mid-word); the scale factor is only a
+                        // fallback for narrow phones and larger text sizes.
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
-                        // One line, shrunk to fit: four tiles share the row, and a
-                        // second line would break "Transactions" mid-word.
                         .lineLimit(1)
                         .minimumScaleFactor(0.65)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 2)
                 .background(Color.hakiCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }

@@ -100,7 +100,8 @@ enum InvestTransactionKind: String, CaseIterable, Hashable {
 
 // MARK: - Row
 
-/// Icon, name, kind, ticker, "quantity × price", amount and date.
+/// Icon, name, kind (unless the name already says it), ticker,
+/// "quantity × price", account, amount and date.
 struct InvestTransactionRow: View {
     let transaction: InvestmentTransaction
     var accountName: String? = nil
@@ -127,7 +128,7 @@ struct InvestTransactionRow: View {
                 Text(subtitle(kind))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
@@ -157,7 +158,13 @@ struct InvestTransactionRow: View {
     }
 
     private func subtitle(_ kind: InvestTransactionKind) -> String {
-        var parts = [kind.title]
+        // The title often already names the kind ("Buy Vanguard…", "Dividend: Apple Inc.",
+        // "Account maintenance fee"); don't spend the line repeating it. Whole words only,
+        // so "Coffee Holdings" doesn't count as naming "Fee".
+        let titleWords = title(kind).lowercased().split(whereSeparator: { !$0.isLetter })
+        let kindWord = kind.title.lowercased()
+        let titleNamesKind = titleWords.contains { $0 == kindWord }
+        var parts: [String] = titleNamesKind ? [] : [kind.title]
         if let ticker = transaction.ticker, Cashtags.isValidTicker(ticker) {
             parts.append(ticker)
         }
@@ -169,7 +176,7 @@ struct InvestTransactionRow: View {
         if let accountName, !accountName.isEmpty {
             parts.append(accountName)
         }
-        return parts.joined(separator: " · ")
+        return parts.isEmpty ? kind.title : parts.joined(separator: " · ")
     }
 
     /// Money in as "+$X", money out as "$X".

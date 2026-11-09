@@ -200,7 +200,8 @@ enum StudyFormat {
         if note.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !lines.isEmpty {
             lines.removeFirst()
         }
-        let text = lines.prefix(4).map { plainLine($0) }.filter { !$0.isEmpty }.joined(separator: " ")
+        // A middle dot between lines, so separate lines don't run together.
+        let text = lines.prefix(4).map { plainLine($0) }.filter { !$0.isEmpty }.joined(separator: " · ")
         return String(text.prefix(160))
     }
 
@@ -350,17 +351,13 @@ struct NoteListRow: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(StudyFormat.noteDate(note.updatedAt))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .layoutPriority(1)
-                Text(snippet.isEmpty ? "No additional text" : snippet)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
+            // One wrapping Text, so the preview's second line starts under the date (like Notes).
+            Text(verbatim: "\(StudyFormat.noteDate(note.updatedAt))  \(snippet.isEmpty ? "No additional text" : snippet)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())

@@ -287,9 +287,12 @@ nonisolated enum WorkoutMath {
         return "\(secs)s"
     }
 
-    /// "52m", "1h 05m".
+    /// "45s", "52m", "1h 05m". Under a minute shows seconds (like the live
+    /// timer) rather than "0m".
     static func formatDuration(seconds: Int) -> String {
-        let minutes = max(seconds, 0) / 60
+        let total = max(seconds, 0)
+        if total < 60 { return "\(total)s" }
+        let minutes = total / 60
         if minutes >= 60 { return String(format: "%dh %02dm", minutes / 60, minutes % 60) }
         return "\(minutes)m"
     }

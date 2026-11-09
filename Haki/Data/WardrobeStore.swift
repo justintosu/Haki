@@ -170,7 +170,9 @@ enum WardrobeStore {
             case .bottom:
                 return (0.5, 0.58, 0.44)
             case .shoes:
-                return (0.5, 0.88, 0.36)
+                // A square card's bottom (y · 4/3 · W + width/2 + 6 pt padding)
+                // has to stay inside the 3:4 board.
+                return (0.5, 0.85, 0.32)
             case .extra:
                 defer { extrasPlaced += 1 }
                 let spots: [(Double, Double)] = [(0.84, 0.18), (0.16, 0.62), (0.84, 0.62), (0.16, 0.18)]

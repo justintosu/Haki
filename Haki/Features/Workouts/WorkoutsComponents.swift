@@ -238,6 +238,8 @@ enum WorkoutsRecordMath {
 struct WorkoutsWeekStats {
     let thisWeekCount: Int
     let thisWeekVolumeKg: Double
+    /// Completed working sets in this week's workouts.
+    let thisWeekSetCount: Int
     let weekStreak: Int
     let last: WorkoutRecord?
 
@@ -247,6 +249,7 @@ struct WorkoutsWeekStats {
         let thisWeek = finished.filter { week?.contains($0.startedAt) ?? false }
         thisWeekCount = thisWeek.count
         thisWeekVolumeKg = thisWeek.reduce(0) { $0 + $1.volumeKg }
+        thisWeekSetCount = thisWeek.reduce(0) { $0 + $1.completedSetCount }
         weekStreak = WorkoutMath.weekStreak(workoutDates: finished.map(\.startedAt), now: now, calendar: calendar)
         last = finished.first
     }
@@ -459,11 +462,21 @@ struct WorkoutsHistoryRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            if !exerciseNames.isEmpty {
-                Text(exerciseNames)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            if !shownExerciseNames.isEmpty {
+                HStack(spacing: 4) {
+                    Text(shownExerciseNames)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if extraExerciseCount > 0 {
+                        // Kept outside the truncating text so long names can't hide it.
+                        Text(verbatim: "+\(extraExerciseCount)")
+                            .lineLimit(1)
+                            .fixedSize()
+                            .layoutPriority(1)
+                    }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
             Text(WorkoutsFormat.statsLine(
                 durationSeconds: workout.durationSeconds,
@@ -479,12 +492,13 @@ struct WorkoutsHistoryRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// "Bench Press (Barbell), Squat (Barbell) +2"
-    private var exerciseNames: String {
-        let names = workout.orderedExercises.map(\.name)
-        guard !names.isEmpty else { return "" }
-        let shown = names.prefix(2).joined(separator: ", ")
-        return names.count > 2 ? "\(shown) +\(names.count - 2)" : shown
+    /// "Bench Press (Barbell), Squat (Barbell)"; the rest is counted as "+N".
+    private var shownExerciseNames: String {
+        workout.orderedExercises.prefix(2).map(\.name).joined(separator: ", ")
+    }
+
+    private var extraExerciseCount: Int {
+        max(0, workout.orderedExercises.count - 2)
     }
 }
 
@@ -500,14 +514,15 @@ struct WorkoutsRoutineRow: View {
                 .frame(width: 36, height: 36)
                 .background(Color.purple.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .accessibilityHidden(true)
+            // Concrete colors: List buttons tint hierarchical .primary/.secondary with the accent.
             VStack(alignment: .leading, spacing: 2) {
                 Text(routine.name)
                     .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.primary)
                     .lineLimit(1)
                 Text(subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondary)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
@@ -527,7 +542,7 @@ struct WorkoutsRoutineRow: View {
     }
 }
 
-private extension String {
+extension String {
     /// "Today" → "today" mid-sentence; dates stay as they are.
     var lowercasedIfRelative: String {
         self == "Today" || self == "Yesterday" ? lowercased() : self
@@ -547,13 +562,14 @@ struct ExerciseDefinitionRow: View {
                 .frame(width: iconSize, height: iconSize)
                 .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .accessibilityHidden(true)
+            // Concrete colors: List buttons tint hierarchical .primary/.secondary with the accent.
             VStack(alignment: .leading, spacing: 2) {
                 Text(definition.name)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.primary)
                     .multilineTextAlignment(.leading)
                 Text(subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondary)
             }
             Spacer(minLength: 0)
         }

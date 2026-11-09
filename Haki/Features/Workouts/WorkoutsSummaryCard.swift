@@ -84,7 +84,8 @@ struct WorkoutsSummaryCard: View {
     }
 }
 
-/// The linked part of the card: header, this week, streak, last workout.
+/// The linked part of the card: header (with the week streak), this week's
+/// stats, last workout.
 private struct WorkoutsSummaryCardContent: View {
     let stats: WorkoutsWeekStats
     let weightUnit: WeightUnit
@@ -126,7 +127,8 @@ private struct WorkoutsSummaryCardContent: View {
         HStack(spacing: 12) {
             WorkoutsStatTile(title: "This week", value: WorkoutsFormat.workoutCount(stats.thisWeekCount))
             WorkoutsStatTile(title: "Volume this week", value: WorkoutsFormat.volume(stats.thisWeekVolumeKg, unit: weightUnit))
-            WorkoutsStatTile(title: "Streak", value: stats.weekStreak == 1 ? "1 week" : "\(stats.weekStreak) weeks")
+            // The week streak is the header's badge, so it isn't repeated here.
+            WorkoutsStatTile(title: "Sets this week", value: WorkoutsFormat.setCount(stats.thisWeekSetCount))
         }
     }
 

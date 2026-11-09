@@ -76,7 +76,8 @@ struct PercentChangeText: View {
     }
 }
 
-/// "$AAPL" as a tappable-looking capsule.
+/// "$AAPL" as a tappable-looking capsule, with a "Holds" badge when the
+/// post's author holds that stock.
 struct TickerChip: View {
     let ticker: String
     var isVerifiedHolder: Bool = false
@@ -86,9 +87,12 @@ struct TickerChip: View {
             Text("$\(ticker)")
                 .font(.subheadline.weight(.semibold))
             if isVerifiedHolder {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.caption)
-                    .accessibilityLabel("Holds this stock")
+                // Spelled out, not just a seal, so it isn't read as a "verified
+                // ticker" mark.
+                Label("Holds", systemImage: "checkmark.seal.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption.weight(.semibold))
+                    .accessibilityLabel("Author holds this stock")
             }
         }
         .padding(.horizontal, 10)

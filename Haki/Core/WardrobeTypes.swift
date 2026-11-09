@@ -51,7 +51,7 @@ nonisolated enum ClothingCategory: String, CaseIterable, Codable, Hashable, Iden
         case .top: "tshirt"
         case .bottom: "figure.walk"
         case .dress: "figure.dress.line.vertical.figure"
-        case .outerwear: "cloud.snow"
+        case .outerwear: "jacket"
         case .shoes: "shoe"
         case .accessory: "eyeglasses"
         case .bag: "bag"

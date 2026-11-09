@@ -109,6 +109,7 @@ struct RoutineEditorView: View {
                         showsDeleteConfirmation = true
                     } label: {
                         Label("Delete routine", systemImage: "trash")
+                            .foregroundStyle(Color.hakiNegative)
                     }
                 }
             }
@@ -281,25 +282,31 @@ private struct RoutineExerciseEditorRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
+            // Each control gets a full row's height so the ~32pt iOS 26 stepper
+            // capsules don't overlap and their -/+ targets stay apart.
             Stepper(value: setsBinding, in: 1...12) {
                 Text(verbatim: WorkoutsFormat.setCount(planned.targetSets))
                     .monospacedDigit()
             }
+            .frame(minHeight: 36)
             if planned.kind.logsReps {
                 Stepper(value: lowBinding, in: 1...50) {
                     Text("Reps from \(lowBinding.wrappedValue)")
                         .monospacedDigit()
                 }
+                .frame(minHeight: 36)
                 Stepper(value: highBinding, in: 1...50) {
                     Text("Reps up to \(highBinding.wrappedValue)")
                         .monospacedDigit()
                 }
+                .frame(minHeight: 36)
             }
             Picker("Rest timer", selection: restBinding) {
                 ForEach(WorkoutsFormat.restChoices(including: planned.restSeconds), id: \.self) { seconds in
                     Text(WorkoutsFormat.restTitle(seconds)).tag(seconds)
                 }
             }
+            .frame(minHeight: 36)
         }
         .padding(.vertical, 4)
     }

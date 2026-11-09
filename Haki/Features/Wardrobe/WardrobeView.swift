@@ -312,6 +312,11 @@ struct WardrobeView: View {
             .padding(.vertical, 2)
         }
         .scrollIndicators(.hidden)
+        // Let the row scroll out to the screen edge instead of being clipped at the
+        // page's 16 pt gutter. The -16 cancels the parent VStack's .padding(.horizontal),
+        // and the content margin keeps "All" lined up with the gutter.
+        .contentMargins(.horizontal, 16, for: .scrollContent)
+        .padding(.horizontal, -16)
     }
 
     private func piecesGrid(_ shown: [ClothingItem]) -> some View {

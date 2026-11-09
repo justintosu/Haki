@@ -238,7 +238,7 @@ struct AccountDetailView: View {
                             Button {
                                 openedTransaction = transaction
                             } label: {
-                                TransactionRow(transaction: transaction, showsDate: true)
+                                TransactionRow(transaction: transaction, showsDate: true, showsAccount: false)
                                     .padding(.vertical, 6)
                                     .contentShape(Rectangle())
                             }

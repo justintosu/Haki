@@ -339,9 +339,11 @@ private struct OverviewSpendingChart: View {
         return multiplier * magnitude
     }
 
+    /// Weekly ticks. No tick at 29: its label starts at the tick and would
+    /// be cut to "2" at the plot's trailing edge.
     private var xAxisDays: [Int] {
         let days = snapshot.daysInMonth
-        return [1, 8, 15, 22, 29].filter { $0 <= days }
+        return [1, 8, 15, 22].filter { $0 <= days }
     }
 
     private func dayLabel(_ day: Int) -> String {

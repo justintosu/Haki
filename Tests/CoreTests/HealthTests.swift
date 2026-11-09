@@ -338,6 +338,9 @@ func runHealthTests() {
         expectEqual(WorkoutMath.formatTimer(seconds: -5), "0s")
         expectEqual(WorkoutMath.formatDuration(seconds: 3_120), "52m")
         expectEqual(WorkoutMath.formatDuration(seconds: 3_900), "1h 05m")
+        expectEqual(WorkoutMath.formatDuration(seconds: 50), "50s")
+        expectEqual(WorkoutMath.formatDuration(seconds: 0), "0s")
+        expectEqual(WorkoutMath.formatDuration(seconds: 60), "1m")
     }
 
     suite("WeightUnit and DistanceUnit") {

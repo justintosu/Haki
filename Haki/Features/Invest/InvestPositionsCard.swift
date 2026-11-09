@@ -165,7 +165,7 @@ struct InvestPositionRow: View {
                 symbolText
                     .lineLimit(1)
                 nameText
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {

@@ -172,12 +172,17 @@ struct StudyCardFace: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, minHeight: minHeight)
-        .background(Color.hakiCardBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background {
+            // Shadow only the card shape; a shadow on the whole view would
+            // also blur a halo under every line of text.
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.hakiCardBackground)
+                .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(tint.opacity(0.25), lineWidth: 1)
         }
-        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
     }
 }
 

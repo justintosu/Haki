@@ -76,6 +76,9 @@ struct AssistantHistoryView: View {
                         open(thread)
                     } label: {
                         AssistantHistoryRow(thread: thread, isCurrent: thread.id == currentThreadID)
+                            // A concrete color: List buttons tint hierarchical
+                            // .primary/.secondary text with the accent color.
+                            .foregroundStyle(Color.primary)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {

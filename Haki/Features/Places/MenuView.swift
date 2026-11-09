@@ -67,7 +67,7 @@ struct MenuView: View {
             .presentationDetents([.medium, .large])
         }
         .sensoryFeedback(.success, trigger: loggedCount)
-        .overlay(alignment: .top) { toastView }
+        .overlay(alignment: .bottom) { toastView }
         .task(id: toast) { await hideToastLater() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { followToday() }
@@ -136,16 +136,17 @@ struct MenuView: View {
     @ViewBuilder
     private var toastView: some View {
         if let toast {
+            // Solid accent capsule at the bottom, like the food log's toast, so it
+            // can't be mistaken for part of the white card under it.
             Label(toast, systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(.regularMaterial, in: Capsule())
-                .shadow(color: Color.black.opacity(0.12), radius: 8, y: 2)
-                .padding(.top, 8)
+                .background(Color.accentColor, in: Capsule())
                 .padding(.horizontal)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .padding(.bottom, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
                 .onTapGesture {
                     withAnimation(.snappy) { self.toast = nil }
                 }
@@ -378,7 +379,9 @@ private struct MenuPlaceHeaderCard: View {
             }
         }
         if let distance = place.distanceText {
-            parts.append("\(distance) away")
+            // Non-breaking spaces keep "500 ft away" on one line; the " · " separators can still wrap.
+            let unbreakable = distance.replacingOccurrences(of: " ", with: "\u{00A0}")
+            parts.append("\(unbreakable)\u{00A0}away")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -704,10 +707,15 @@ private struct MenuPicksCard: View {
     }
 
     private var intro: String {
-        if remainingCalories > 0 {
-            return "You have \(MenuFormat.kcal(Double(remainingCalories))) left today. These healthy, protein-rich dishes fit."
+        guard remainingCalories > 0 else {
+            return "You've reached today's calorie target, so these are simply the healthiest dishes here."
         }
-        return "You've reached today's calorie target, so these are simply the healthiest dishes here."
+        let left = MenuFormat.kcal(Double(remainingCalories))
+        // healthyPicks falls back to the healthiest dishes when nothing fits.
+        if picks.allSatisfy({ $0.calories <= Double(remainingCalories) }) {
+            return "You have \(left) left today. These healthy, protein-rich dishes fit."
+        }
+        return "You have \(left) left today. Nothing here fits that, so these are the healthiest dishes."
     }
 
     private func row(rank: Int, dish: MenuDish) -> some View {
@@ -749,17 +757,10 @@ private struct MenuPicksCard: View {
         .accessibilityHint("Shows details and lets you log it")
     }
 
-    /// "48 g protein · 610 kcal · fits your remaining 900 kcal"
+    /// "48 g protein · 610 kcal". The intro says whether the picks fit the
+    /// calories left, so the rows don't repeat it.
     private func reason(for dish: MenuDish) -> String {
-        var text = "\(MenuFormat.grams(dish.proteinG)) protein · \(MenuFormat.kcal(dish.calories))"
-        guard remainingCalories > 0 else { return text }
-        let remaining = MenuFormat.kcal(Double(remainingCalories))
-        if dish.calories <= Double(remainingCalories) {
-            text += " · fits your remaining \(remaining)"
-        } else {
-            text += " · more than your remaining \(remaining)"
-        }
-        return text
+        "\(MenuFormat.grams(dish.proteinG)) protein · \(MenuFormat.kcal(dish.calories))"
     }
 }
 

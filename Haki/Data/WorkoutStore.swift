@@ -65,7 +65,6 @@ enum WorkoutStore {
         )
         context.insert(workout)
         if let routine {
-            routine.lastUsedAt = now
             for (index, planned) in routine.orderedExercises.enumerated() {
                 let exercise = WorkoutExerciseRecord(
                     order: index, exerciseKey: planned.exerciseKey, name: planned.name,
@@ -217,6 +216,15 @@ enum WorkoutStore {
             for (setIndex, set) in exercise.orderedSets.filter(\.isCompleted).enumerated() { set.order = setIndex }
         }
         workout.endedAt = max(now, workout.startedAt)
+        // A routine's "Last done" counts finished workouts only, so one still
+        // in progress (or discarded) leaves it alone.
+        if let routineID = workout.routineID {
+            var descriptor = FetchDescriptor<RoutineRecord>(predicate: #Predicate { $0.id == routineID })
+            descriptor.fetchLimit = 1
+            if let routine = (try? context.fetch(descriptor))?.first {
+                routine.lastUsedAt = max(routine.lastUsedAt ?? workout.startedAt, workout.startedAt)
+            }
+        }
         LedgerStore.save(context)
         return true
     }

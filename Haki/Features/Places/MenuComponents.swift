@@ -59,16 +59,23 @@ enum MenuFormat {
         "\(kcal(dish.calories)) · \(grams(dish.proteinG)) protein"
     }
 
-    /// "7.9 g protein per 100 kcal · 3.4 g protein per $", or nil.
-    static func proteinValueLine(_ dish: MenuDish, currency: String) -> String? {
+    /// ["7.9 g protein per 100 kcal", "3.4 g protein per $"], or empty.
+    static func proteinValueParts(_ dish: MenuDish, currency: String) -> [String] {
         var parts: [String] = []
         if let perCalories = dish.proteinPer100Calories {
             parts.append("\(oneDecimal(perCalories)) g protein per 100 kcal")
         }
         // Dropped when it rounds to 0.0 (yen, won and other small units).
         if let perPrice = dish.proteinPerCurrencyUnit, perPrice >= 0.05 {
-            parts.append("\(oneDecimal(perPrice)) g protein per \(currencySymbol(for: currency))")
+            // A non-breaking space keeps the symbol from sitting alone on a line.
+            parts.append("\(oneDecimal(perPrice)) g protein per\u{00A0}\(currencySymbol(for: currency))")
         }
+        return parts
+    }
+
+    /// "7.9 g protein per 100 kcal · 3.4 g protein per $", or nil.
+    static func proteinValueLine(_ dish: MenuDish, currency: String) -> String? {
+        let parts = proteinValueParts(dish, currency: currency)
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -102,11 +109,21 @@ struct MenuDishRow: View {
                     .font(.subheadline.weight(.medium))
                     .monospacedDigit()
                     .foregroundStyle(.primary)
-                if let value = MenuFormat.proteinValueLine(dish, currency: currency) {
-                    Text(value)
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                let valueParts = MenuFormat.proteinValueParts(dish, currency: currency)
+                if !valueParts.isEmpty {
+                    // One line when both parts fit, otherwise one part per line.
+                    ViewThatFits(in: .horizontal) {
+                        Text(valueParts.joined(separator: " · "))
+                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(valueParts, id: \.self) { part in
+                                Text(part)
+                            }
+                        }
+                    }
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
                 }
                 if !dish.tags.isEmpty {
                     MenuTagRow(tags: dish.tags)
@@ -137,7 +154,7 @@ struct MenuTagChip: View {
 
     var body: some View {
         Label(menuTag.title, systemImage: menuTag.systemImage)
-            .labelStyle(MenuCompactLabelStyle())
+            .labelStyle(CompactLabelStyle())
             .font(.caption2.weight(.semibold))
             .foregroundStyle(tint)
             .padding(.horizontal, 7)
@@ -217,20 +234,9 @@ struct MenuNutritionMarker: View {
             isOfficial ? "Official nutrition" : "Estimated nutrition",
             systemImage: isOfficial ? "checkmark.seal.fill" : "sparkles"
         )
-        .labelStyle(MenuCompactLabelStyle())
+        .labelStyle(CompactLabelStyle())
         .font(.caption2)
         .foregroundStyle(isOfficial ? Color.hakiPositive : Color.secondary)
-    }
-}
-
-/// Icon and title close together, for small captions.
-struct MenuCompactLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 3) {
-            configuration.icon
-                .accessibilityHidden(true)
-            configuration.title
-        }
     }
 }
 

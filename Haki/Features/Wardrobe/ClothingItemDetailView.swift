@@ -139,6 +139,11 @@ struct ClothingItemDetailView: View {
                     }
                     .frame(width: 16, height: 16)
             }
+            // Name the colors too: a white swatch on a white card reads as an empty circle.
+            Text(WardrobeFormat.colors(item.colors))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 2)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Colors: \(WardrobeFormat.colors(item.colors))")

@@ -383,7 +383,6 @@ private struct NutritionGoalsNumberRow: View {
                 .accessibilityLabel("\(title) in \(spokenUnit)")
             Text(unit)
                 .foregroundStyle(.secondary)
-                .frame(minWidth: 36, alignment: .leading)
                 .accessibilityHidden(true)
         }
     }
@@ -481,6 +480,7 @@ private struct NutritionTargetsGrid: View {
 
 /// A daily target: a number field plus a stepper. Valid numbers save as
 /// they're typed; anything out of range snaps back when the field loses focus.
+/// The number shows grouped ("2,250") except while it's being edited.
 private struct NutritionTargetRow: View {
     let title: String
     let unit: String
@@ -521,11 +521,11 @@ private struct NutritionTargetRow: View {
             }
         }
         .onAppear {
-            text = String(value)
+            text = display(value, editing: focus.wrappedValue == field)
         }
         .onChange(of: value) { _, newValue in
-            if Int(text) != newValue {
-                text = String(newValue)
+            if Int(text.filter { $0.isASCII && $0.isNumber }) != newValue {
+                text = display(newValue, editing: focus.wrappedValue == field)
             }
         }
         .onChange(of: text) { _, newValue in
@@ -533,9 +533,10 @@ private struct NutritionTargetRow: View {
             value = parsed
         }
         .onChange(of: focus.wrappedValue) { _, newValue in
-            if newValue != field {
-                text = String(value)
-            }
+            // Plain digits while editing (the number pad has no separator key);
+            // grouped like the rest of the food screens ("2,250") otherwise.
+            // Losing focus also snaps an out-of-range entry back to the saved value.
+            text = display(value, editing: newValue == field)
         }
     }
 
@@ -551,6 +552,10 @@ private struct NutritionTargetRow: View {
         Text(unit)
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
+    }
+
+    private func display(_ number: Int, editing: Bool) -> String {
+        editing ? String(number) : number.formatted()
     }
 
     private var stepper: some View {

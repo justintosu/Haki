@@ -223,17 +223,16 @@ private struct AccountsRow: View {
                     .font(.body.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                subtitleLine
                 if !account.includeInNetWorth {
                     Label("Hidden from net worth", systemImage: "eye.slash")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            Spacer(minLength: 8)
+            // Fills the row instead of a Spacer: a Spacer in HStack(spacing: 12)
+            // adds the stack spacing on both sides (32pt), which truncated names.
+            .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(Money.format(account.balanceCents))
@@ -246,11 +245,17 @@ private struct AccountsRow: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Text(AccountsStyle.updatedText(account.balanceUpdatedAt))
-                    .font(.caption)
-                    .foregroundStyle(AccountsStyle.isStale(account.balanceUpdatedAt) ? Color.hakiWarning : Color.secondary)
-                    .lineLimit(1)
+                // Only a stale balance earns row space; the detail page and the
+                // accessibility label always say when it was updated.
+                if AccountsStyle.isStale(account.balanceUpdatedAt) {
+                    Text(AccountsStyle.updatedText(account.balanceUpdatedAt))
+                        .font(.caption)
+                        .foregroundStyle(Color.hakiWarning)
+                        .lineLimit(1)
+                }
             }
+            // The balance is never squeezed or wrapped; the name column gives way.
+            .fixedSize(horizontal: true, vertical: false)
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
@@ -262,8 +267,26 @@ private struct AccountsRow: View {
         .accessibilityLabel(accessibilityText)
     }
 
-    private var subtitle: String {
-        account.subtitle.isEmpty ? account.kind.displayName : account.subtitle
+    /// "Harborline Bank ••4821". Only the institution truncates, so the mask
+    /// that tells same-bank accounts apart always shows.
+    private var subtitleLine: some View {
+        HStack(spacing: 4) {
+            if !account.institution.isEmpty {
+                Text(account.institution)
+                    .lineLimit(1)
+            }
+            if !account.mask.isEmpty {
+                Text(AccountsStyle.maskText(account.mask))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            if account.institution.isEmpty && account.mask.isEmpty {
+                Text(account.kind.displayName)
+                    .lineLimit(1)
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
     }
 
     private var balanceColor: Color {

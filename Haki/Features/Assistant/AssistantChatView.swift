@@ -127,7 +127,10 @@ struct AssistantChatView: View {
     @ViewBuilder
     private var status: some View {
         if let activity = service.activity {
-            AssistantTypingIndicator(activity: activity) {
+            AssistantTypingIndicator(
+                activity: activity,
+                showsStatusText: service.items.last?.isInterim != true
+            ) {
                 service.cancel()
             }
             .transition(.opacity)

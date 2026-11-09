@@ -194,16 +194,13 @@ struct BudgetsSnapshot {
         return Double(elapsedDays) / Double(daysInMonth)
     }
 
-    /// `BudgetProgress.pace`, except that spending ahead of an even pace
-    /// isn't flagged while the month-end projection stays within budget: a
-    /// big bill early in the month (rent on the 1st) is ahead of an even pace
-    /// for weeks without the month going over.
+    /// `BudgetProgress.pace`, adjusted by the month-end projection for the
+    /// current month (see `pace(elapsedDays:daysInMonth:projectedCents:)`):
+    /// rent on the 1st isn't flagged, and "On track" never sits above a
+    /// projection past the budget.
     var pace: BudgetPace {
-        let straightLine = overall.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
-        if straightLine == .aheadOfPace, isCurrentMonth, projectedCents <= totalBudgetCents {
-            return .onTrack
-        }
-        return straightLine
+        guard isCurrentMonth else { return overall.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth) }
+        return overall.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth, projectedCents: projectedCents)
     }
 
     /// Spending outside budgets: unbudgeted categories plus uncategorized.

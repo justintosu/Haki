@@ -208,6 +208,20 @@ suite("BudgetProgress") {
     expectEqual(progress.pace(elapsedDays: 15, daysInMonth: 30), .onTrack)
     expectEqual(progress.pace(elapsedDays: 5, daysInMonth: 30), .onTrack, "under half the budget is never flagged")
     expectEqual(BudgetProgress(budgetCents: 30_000, spentCents: 18_000).pace(elapsedDays: 10, daysInMonth: 30), .aheadOfPace)
+    // With a month-end projection.
+    let rentEarly = BudgetProgress(budgetCents: 30_000, spentCents: 18_000)
+    expectEqual(rentEarly.pace(elapsedDays: 10, daysInMonth: 30, projectedCents: 29_000), .onTrack,
+                "ahead of pace but projected within budget")
+    expectEqual(rentEarly.pace(elapsedDays: 10, daysInMonth: 30, projectedCents: 40_000), .aheadOfPace)
+    let groceries = BudgetProgress(budgetCents: 60_000, spentCents: 20_000)
+    expectEqual(groceries.pace(elapsedDays: 9, daysInMonth: 30), .onTrack, "under half the budget")
+    expectEqual(groceries.pace(elapsedDays: 9, daysInMonth: 30, projectedCents: 67_700), .aheadOfPace,
+                "projected over budget and ahead of an even pace")
+    expectEqual(groceries.pace(elapsedDays: 9, daysInMonth: 30, projectedCents: 58_000), .onTrack)
+    expectEqual(BudgetProgress(budgetCents: 60_000, spentCents: 0).pace(elapsedDays: 1, daysInMonth: 30, projectedCents: 70_000), .onTrack,
+                "nothing spent yet, whatever the projection")
+    expect(groceries.isAheadOfEvenPace(elapsedDays: 9, daysInMonth: 30))
+    expect(!groceries.isAheadOfEvenPace(elapsedDays: 20, daysInMonth: 30))
     expectEqual(progress.projectedCents(elapsedDays: 10, daysInMonth: 30), 36_000)
     expectEqual(progress.projectedCents(elapsedDays: 0, daysInMonth: 30), 12_000)
     expectEqual(BudgetProgress(budgetCents: 100, spentCents: Int.max / 2).projectedCents(elapsedDays: 1, daysInMonth: 31),
@@ -216,6 +230,7 @@ suite("BudgetProgress") {
     let over = BudgetProgress(budgetCents: 10_000, spentCents: 12_500)
     expect(over.isOverBudget)
     expectEqual(over.pace(elapsedDays: 3, daysInMonth: 30), .overBudget)
+    expectEqual(over.pace(elapsedDays: 3, daysInMonth: 30, projectedCents: 0), .overBudget)
     expectEqual(over.fractionUsed, 1.25)
     expectEqual(BudgetProgress(budgetCents: 0, spentCents: 100).fractionUsed, 1)
     expectEqual(BudgetProgress(budgetCents: 0, spentCents: 0).fractionUsed, 0)

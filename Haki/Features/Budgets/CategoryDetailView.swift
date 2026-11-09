@@ -4,7 +4,7 @@
 //
 //  One category for one month: spending against its budget (or income
 //  received), the last six months as a bar chart with the budget as a dashed
-//  rule, the six-month average, and the month's transactions.
+//  rule, the average of the earlier months, and the month's transactions.
 //
 
 import Charts
@@ -242,7 +242,9 @@ struct CategoryDetailView: View {
 
     private func projectionText(_ progress: BudgetProgress, data: CategoryDetailData) -> String? {
         guard let projected = data.projectedCents else { return nil }
-        return "Projected: \(Money.format(projected, showsCents: false)) by month end"
+        let text = "Projected: \(Money.format(projected, showsCents: false)) by month end"
+        guard projected > progress.budgetCents else { return text }
+        return "\(text), \(Money.format(projected - progress.budgetCents, showsCents: false)) over budget"
     }
 
     private var noBudgetPrompt: some View {
@@ -281,8 +283,8 @@ struct CategoryDetailView: View {
             Divider()
             HStack(alignment: .top, spacing: 12) {
                 CategoryDetailStat(
-                    title: "6-month average",
-                    value: Money.format(data.averageCents, showsCents: false)
+                    title: "Monthly average",
+                    value: data.averageMonthCount == 0 ? "—" : Money.format(data.averageCents, showsCents: false)
                 )
                 CategoryDetailStat(
                     title: data.isCurrentMonth ? "So far vs. average" : "Compared with average",
@@ -344,7 +346,7 @@ struct CategoryDetailView: View {
                 Button {
                     openedTransaction = transaction
                 } label: {
-                    TransactionRow(transaction: transaction, showsDate: true)
+                    TransactionRow(transaction: transaction, showsDate: true, showsCategory: false)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -377,8 +379,13 @@ private struct CategoryDetailData {
     let amountCents: Int
     /// The six months ending with `month`, oldest first.
     let monthTotals: [MonthTotal]
-    /// Average over the months with any activity.
+    /// Average over the months before `month` (the faded bars) that have
+    /// any activity. The displayed month is left out so a partly finished
+    /// month doesn't pull down the figure it's compared against.
     let averageCents: Int
+    /// How many earlier months `averageCents` covers (0 = no history).
+    let averageMonthCount: Int
+    /// Months in the whole six-month window with any activity.
     let activeMonthCount: Int
     /// This month's transactions in the category, newest first.
     let monthTransactions: [TransactionRecord]
@@ -422,7 +429,8 @@ private struct CategoryDetailData {
         }
 
         let active = totals.map { $0.cents }.filter { $0 != 0 }
-        let activeSum = active.reduce(0, +)
+        let earlier = totals.dropLast().map { $0.cents }.filter { $0 != 0 }
+        let earlierSum = earlier.reduce(0, +)
         let budget = kind == .expense && category.hasBudget ? category.monthlyBudgetCents : nil
         let amount = totals.last?.cents ?? 0
         let isCurrent = month == MonthInterval.current(calendar: calendar, now: now)
@@ -442,7 +450,8 @@ private struct CategoryDetailData {
         self.amountCents = amount
         self.monthTotals = totals
         self.activeMonthCount = active.count
-        self.averageCents = active.isEmpty ? 0 : Int((Double(activeSum) / Double(active.count)).rounded())
+        self.averageMonthCount = earlier.count
+        self.averageCents = earlier.isEmpty ? 0 : Int((Double(earlierSum) / Double(earlier.count)).rounded())
         self.monthTransactions = SpendingAnalytics.entries(own, in: month.dateInterval(in: calendar))
         self.isCurrentMonth = isCurrent
         self.elapsedDays = elapsed
@@ -454,15 +463,13 @@ private struct CategoryDetailData {
         return BudgetProgress(budgetCents: budgetCents, spentCents: amountCents)
     }
 
-    /// `BudgetProgress.pace`, except that spending ahead of an even pace
-    /// isn't flagged while the month-end projection stays within budget (a
-    /// big bill early in the month, like rent on the 1st).
+    /// `BudgetProgress.pace`, adjusted by the month-end projection for the
+    /// current month, the same way as the Budgets screen.
     func pace(_ progress: BudgetProgress) -> BudgetPace {
-        let straightLine = progress.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
-        if straightLine == .aheadOfPace, let projectedCents, projectedCents <= progress.budgetCents {
-            return .onTrack
+        guard isCurrentMonth, let projectedCents else {
+            return progress.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
         }
-        return straightLine
+        return progress.pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth, projectedCents: projectedCents)
     }
 
     /// How much of the month has passed, only for the current month.

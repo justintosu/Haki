@@ -255,9 +255,17 @@ struct TransactionDetailView: View {
                 Button {
                     markReviewed()
                 } label: {
-                    Label("Mark as reviewed", systemImage: "checkmark.circle.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+                    // Inside a Form row the Label icon picks up the accent tint, which is
+                    // the same as the prominent button fill, so it disappears. Set it white
+                    // like the title.
+                    Label {
+                        Text("Mark as reviewed")
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.white)
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
@@ -289,7 +297,9 @@ struct TransactionDetailView: View {
     private var headerSubtitle: String {
         var parts = [transaction.date.formatted(.dateTime.weekday(.wide).month(.wide).day().year())]
         if let account = transaction.account { parts.append(account.name) }
-        return parts.joined(separator: " · ")
+        // Date on one line, account on the next: joining them with " · " let the wrap
+        // fall inside the account name ("… · Everyday" / "Rewards Card").
+        return parts.joined(separator: "\n")
     }
 
     // MARK: Sections

@@ -442,12 +442,13 @@ private struct WorkoutDetailExerciseCard: View {
             if !records.isEmpty {
                 WorkoutsRecordBadge(compact: true)
             }
-            if isBest {
-                Image(systemName: "star.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel("Best set")
-            }
+            // Always reserve the star's slot so PR badges line up across set rows.
+            Image(systemName: "star.fill")
+                .font(.caption)
+                .foregroundStyle(Color.accentColor)
+                .opacity(isBest ? 1 : 0)
+                .accessibilityLabel("Best set")
+                .accessibilityHidden(!isBest)
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(recordsDescription(records))

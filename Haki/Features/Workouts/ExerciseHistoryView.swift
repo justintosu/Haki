@@ -99,7 +99,7 @@ struct ExerciseHistoryView: View {
         if let last = performances.first {
             let count = performances.count
             parts.append(count == 1 ? "1 session" : "\(count) sessions")
-            parts.append("last \(WorkoutsFormat.day(last.date))")
+            parts.append("last done \(WorkoutsFormat.day(last.date).lowercasedIfRelative)")
         }
         return parts.joined(separator: " · ")
     }

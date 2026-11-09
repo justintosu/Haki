@@ -717,8 +717,7 @@ struct AssistantToolExecutor {
     }
 
     /// All budgets together, with the Budgets screen's month-end projection
-    /// and pace (spending ahead of an even pace isn't flagged while the
-    /// projection stays within budget).
+    /// and pace (adjusted by that projection, like the Budgets screen).
     private func overallBudget(
         _ budgeted: [TransactionCategory],
         spentByID: [String: Int],
@@ -740,10 +739,9 @@ struct AssistantToolExecutor {
             }
             projected = max(projected, SpendingAnalytics.projectedSpending(budgetedEntries, month: month, asOf: now, calendar: calendar))
         }
-        var pace = overall.pace(elapsedDays: elapsed, daysInMonth: days)
-        if pace == .aheadOfPace, isCurrent, projected <= totalBudget {
-            pace = .onTrack
-        }
+        let pace = isCurrent
+            ? overall.pace(elapsedDays: elapsed, daysInMonth: days, projectedCents: projected)
+            : overall.pace(elapsedDays: elapsed, daysInMonth: days)
         var fields: [String: JSONValue] = [
             "budget": J.money(totalBudget),
             "spent": J.money(totalSpent),

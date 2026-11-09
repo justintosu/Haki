@@ -206,6 +206,33 @@ nonisolated struct BudgetProgress: Hashable {
         return Double(spentCents) > evenPace * 1.1 && fractionUsed >= 0.5 ? .aheadOfPace : .onTrack
     }
 
+    /// The current month's pace, adjusted by a month-end projection
+    /// (`SpendingAnalytics.projectedSpending`) both ways. Spending ahead of an
+    /// even pace isn't flagged while the projection stays within budget (rent
+    /// paid on the 1st). And it is flagged before half the budget is used when
+    /// the projection goes over, so "On track" never sits above a projection
+    /// past the budget. Spending must still be ahead of an even pace for that,
+    /// so a new month isn't flagged before anything is spent.
+    func pace(elapsedDays: Int, daysInMonth: Int, projectedCents: Int) -> BudgetPace {
+        let straightLine = pace(elapsedDays: elapsedDays, daysInMonth: daysInMonth)
+        switch straightLine {
+        case .aheadOfPace where projectedCents <= budgetCents:
+            return .onTrack
+        case .onTrack where projectedCents > budgetCents && isAheadOfEvenPace(elapsedDays: elapsedDays, daysInMonth: daysInMonth):
+            return .aheadOfPace
+        default:
+            return straightLine
+        }
+    }
+
+    /// Spent more than an even pace, with the same 10% leeway as `pace` but
+    /// without its half-budget floor.
+    func isAheadOfEvenPace(elapsedDays: Int, daysInMonth: Int) -> Bool {
+        guard daysInMonth > 0, budgetCents > 0 else { return false }
+        let evenPace = Double(budgetCents) * Double(min(elapsedDays, daysInMonth)) / Double(daysInMonth)
+        return Double(spentCents) > evenPace * 1.1
+    }
+
     /// Month-end spending if the current daily rate continues.
     func projectedCents(elapsedDays: Int, daysInMonth: Int) -> Int {
         guard elapsedDays > 0 else { return spentCents }

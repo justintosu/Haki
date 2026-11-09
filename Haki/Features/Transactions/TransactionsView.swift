@@ -176,8 +176,10 @@ struct TransactionsView: View {
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
-            // List buttons tint unstyled label text with the accent color.
-            .foregroundStyle(.primary)
+            // List buttons tint unstyled label text with the accent color. A
+            // concrete color (not the hierarchical `.primary`, which resolves
+            // to that tint) undoes it, so `.secondary` text inside is gray.
+            .foregroundStyle(Color.primary)
             .contentShape(Rectangle())
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -267,6 +269,8 @@ struct TransactionsView: View {
                     .accessibilityHidden(true)
             }
             .padding(.vertical, 4)
+            // Undo the list-button tint (see row(for:)); the icon keeps its explicit accent color.
+            .foregroundStyle(Color.primary)
         }
         .accessibilityHint("Shows only transactions that need review")
     }

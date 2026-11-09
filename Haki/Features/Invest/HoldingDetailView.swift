@@ -107,9 +107,16 @@ struct HoldingDetailView: View {
 
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(accountTitle(account))
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(accountName(account))
+                        .lineLimit(1)
+                    if let mask = account?.mask, !mask.isEmpty {
+                        // The last digits tell accounts apart, so they never truncate.
+                        Text(verbatim: "••\(mask)")
+                            .fixedSize()
+                    }
+                }
+                .font(.body.weight(.medium))
                 if let institution {
                     Text(institution)
                         .font(.caption)
@@ -133,13 +140,9 @@ struct HoldingDetailView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func accountTitle(_ account: InvestmentAccount?) -> String {
+    private func accountName(_ account: InvestmentAccount?) -> String {
         guard let account else { return "Account" }
-        let name = account.name.isEmpty ? (account.officialName ?? "Account") : account.name
-        if let mask = account.mask, !mask.isEmpty {
-            return "\(name) ••\(mask)"
-        }
-        return name
+        return account.name.isEmpty ? (account.officialName ?? "Account") : account.name
     }
 
     // MARK: Activity
@@ -285,7 +288,7 @@ private struct HoldingHeaderCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
-                    Label(assetClass.displayName, systemImage: InvestStyle.systemImage(for: assetClass))
+                    Label(InvestStyle.singularName(for: assetClass), systemImage: InvestStyle.systemImage(for: assetClass))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(InvestStyle.color(for: assetClass))
                         .padding(.horizontal, 8)

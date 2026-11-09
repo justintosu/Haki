@@ -54,13 +54,14 @@ struct StudySessionView: View {
                             Image(systemName: "xmark")
                         }
                         .accessibilityLabel("Close")
+                        // On iOS 26 the dialog appears as a popover from the view it's attached to, so attach it to the X.
+                        .confirmationDialog("End this session?", isPresented: $showsEndConfirmation, titleVisibility: .visible) {
+                            Button("End session", role: .destructive) { dismiss() }
+                            Button("Keep studying", role: .cancel) {}
+                        } message: {
+                            Text("Cards you've already answered keep their new schedule.")
+                        }
                     }
-                }
-                .confirmationDialog("End this session?", isPresented: $showsEndConfirmation, titleVisibility: .visible) {
-                    Button("End session", role: .destructive) { dismiss() }
-                    Button("Keep studying", role: .cancel) {}
-                } message: {
-                    Text("Cards you've already answered keep their new schedule.")
                 }
         }
         .onAppear { prepareIfNeeded() }

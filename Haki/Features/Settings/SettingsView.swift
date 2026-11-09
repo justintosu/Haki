@@ -98,10 +98,18 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Haki")
                         .font(.system(.title3, design: .rounded).weight(.bold))
-                    Text(statsText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // Breaks between the parts, never inside one or after a "·".
+                    ViewThatFits(in: .horizontal) {
+                        Text(statsParts.joined(separator: " · "))
+                            .lineLimit(1)
+                        Text(statsParts.prefix(2).joined(separator: " · ") + "\n" + statsParts[2])
+                        Text(statsParts.joined(separator: "\n"))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(statsText)
                 }
             }
             .padding(.vertical, 6)
@@ -243,13 +251,18 @@ struct SettingsView: View {
 
     // MARK: Text
 
-    private var statsText: String {
+    /// "3 accounts", "120 transactions", "14 categories".
+    private var statsParts: [String] {
         [
             SettingsFormat.count(accounts.count, "account", "accounts"),
             SettingsFormat.count(transactionCount, "transaction", "transactions"),
             SettingsFormat.count(categories.count, "category", "categories"),
         ]
-        .joined(separator: " · ")
+    }
+
+    /// Spoken as one phrase whichever layout is showing.
+    private var statsText: String {
+        statsParts.joined(separator: ", ")
     }
 
     private var versionText: String {

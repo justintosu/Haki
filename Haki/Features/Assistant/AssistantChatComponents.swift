@@ -160,6 +160,9 @@ struct AssistantLookedAtRow: View {
 /// Shown while a request runs: what Haki is doing, and Cancel.
 struct AssistantTypingIndicator: View {
     let activity: AssistantActivity
+    /// False right after an interim note ("Let me check your budgets."),
+    /// which already says what Haki is doing; VoiceOver still reads the status.
+    var showsStatusText: Bool = true
     let onCancel: () -> Void
 
     var body: some View {
@@ -167,11 +170,13 @@ struct AssistantTypingIndicator: View {
             AssistantAvatar()
             HStack(spacing: 8) {
                 AssistantTypingDots()
-                Text(activity.statusText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .contentTransition(.opacity)
+                if showsStatusText {
+                    Text(activity.statusText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentTransition(.opacity)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -185,6 +190,9 @@ struct AssistantTypingIndicator: View {
                 .accessibilityHint("Stops this answer")
         }
         .animation(.easeInOut(duration: 0.2), value: activity)
+        // Outside the animation: the row moves with the chat (e.g. when an
+        // interim note is inserted above it); only its contents animate.
+        .geometryGroup()
     }
 }
 

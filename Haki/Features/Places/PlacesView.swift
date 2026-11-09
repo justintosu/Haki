@@ -137,7 +137,15 @@ struct PlacesView: View {
 
     private var mapPreview: some View {
         Map(position: $position, interactionModes: []) {
-            mapAnnotations
+            // Small dots: full pins would pile up in the 180 pt frame. The
+            // expand button opens the full map, which has the tappable pins.
+            UserAnnotation()
+            ForEach(results, id: \.id) { place in
+                Annotation(place.name, coordinate: place.coordinate) {
+                    PlacesMapDot(isSelected: place.id == selectedPlaceID)
+                }
+                .annotationTitles(.hidden)
+            }
         }
         .frame(height: 180)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -256,6 +264,7 @@ struct PlacesView: View {
 
     // MARK: Map
 
+    /// The full map's tappable pins (the list-mode preview draws dots instead).
     @MapContentBuilder
     private var mapAnnotations: some MapContent {
         UserAnnotation()

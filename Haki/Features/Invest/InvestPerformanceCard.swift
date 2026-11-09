@@ -323,8 +323,8 @@ private struct InvestPerformanceChart: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                AxisValueLabel(format: axisDateFormat)
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisValueLabel(format: axisDateFormat, anchor: ChartAxis.dateLabelAnchor(for: value, in: xDomain))
             }
         }
         .accessibilityLabel("Portfolio value chart")

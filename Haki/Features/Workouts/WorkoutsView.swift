@@ -181,7 +181,13 @@ struct WorkoutsView: View {
             NavigationLink {
                 ExerciseBrowserView()
             } label: {
-                Label("Exercises", systemImage: "list.bullet")
+                // The same tile and spacing as the Hevy row below, so both
+                // titles (and their separators) start at the same x.
+                HStack(spacing: 12) {
+                    HevyIconTile(systemImage: "dumbbell.fill", tint: .accentColor)
+                    Text("Exercises")
+                        .foregroundStyle(Color.primary)
+                }
             }
             // A plain link, like the Health tab's Hevy row: this screen is
             // itself pushed by a NavigationLink, and pushing Hevy settings

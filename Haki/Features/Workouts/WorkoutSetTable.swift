@@ -178,7 +178,8 @@ private struct WorkoutExerciseHeaderRow: View {
                         .multilineTextAlignment(.leading)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        // Concrete gray: inside the Button, .secondary takes the accent tint.
+                        .foregroundStyle(Color.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -367,7 +368,8 @@ struct WorkoutSetRow: View {
             } label: {
                 Text(previousText)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    // Concrete gray: inside the Button, .secondary takes the accent tint.
+                    .foregroundStyle(Color.secondary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

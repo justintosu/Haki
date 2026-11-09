@@ -128,12 +128,6 @@ struct ActiveWorkoutView: View {
 
     private var workoutScreen: some View {
         workoutListWithSheets
-            .confirmationDialog("Finish workout?", isPresented: $showsFinishConfirmation, titleVisibility: .visible) {
-                Button("Finish workout") { finish() }
-                Button("Keep going", role: .cancel) {}
-            } message: {
-                Text(finishMessage)
-            }
             .confirmationDialog("Discard this workout?", isPresented: $showsDiscardConfirmation, titleVisibility: .visible) {
                 Button("Discard workout", role: .destructive) { discard() }
                 Button("Keep workout", role: .cancel) {}
@@ -181,6 +175,7 @@ struct ActiveWorkoutView: View {
                     showsDiscardConfirmation = true
                 } label: {
                     Label("Discard workout", systemImage: "trash")
+                        .foregroundStyle(Color.hakiNegative)
                 }
             }
         }
@@ -256,6 +251,13 @@ struct ActiveWorkoutView: View {
         ToolbarItem(placement: .topBarTrailing) {
             Button("Finish") { requestFinish() }
                 .fontWeight(.semibold)
+                // Attached here so the popover points at the Finish button.
+                .confirmationDialog("Finish workout?", isPresented: $showsFinishConfirmation, titleVisibility: .visible) {
+                    Button("Finish workout") { finish() }
+                    Button("Keep going", role: .cancel) {}
+                } message: {
+                    Text(finishMessage)
+                }
         }
         ToolbarItemGroup(placement: .keyboard) {
             Spacer()

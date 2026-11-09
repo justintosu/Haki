@@ -203,7 +203,9 @@ struct RecurringDateBadge: View {
 
 // MARK: - Bill row
 
-/// A tracked bill: category icon, name, frequency and next due date, amount.
+/// A tracked bill: category icon, name, next due date, amount. The amount's
+/// suffix (/wk, /2wk, /mo, /qtr, /yr) carries the frequency, so the subtitle
+/// leaves it out to stay on one line.
 struct RecurringBillRow: View {
     let item: RecurringItem
     let nextDueDate: Date
@@ -220,6 +222,7 @@ struct RecurringBillRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .accessibilityLabel("\(item.frequency.displayName), \(subtitle)")
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
@@ -245,10 +248,8 @@ struct RecurringBillRow: View {
     }
 
     private var subtitle: String {
-        let frequency = item.frequency.displayName
-        guard item.isActive else { return "\(frequency) · Paused" }
-        let due = RecurringFormat.duePhrase(for: nextDueDate, now: now)
-        return "\(frequency) · \(due)"
+        guard item.isActive else { return "Paused" }
+        return RecurringFormat.duePhrase(for: nextDueDate, now: now)
     }
 
     private var monthlyEquivalent: String {

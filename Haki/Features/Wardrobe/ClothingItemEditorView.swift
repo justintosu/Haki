@@ -233,11 +233,9 @@ struct ClothingItemEditorView: View {
     private var autoFillStatus: some View {
         switch tagStatus {
         case .idle:
-            if photo == nil {
-                Text("Add a photo and the details fill in on their own.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
+            // With no photo yet the section footer already explains
+            // auto-fill, so only offer the manual button once there's a photo.
+            if photo != nil {
                 Button {
                     startTagging()
                 } label: {
