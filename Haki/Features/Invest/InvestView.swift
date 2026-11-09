@@ -114,6 +114,9 @@ struct InvestView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            AssistantToolbarButton()
+        }
         ToolbarItem(placement: .topBarTrailing) {
             if portfolio.hasConnections {
                 // Same rule as the share card: cash alone has nothing to share.

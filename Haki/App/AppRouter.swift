@@ -36,7 +36,7 @@ final class AppRouter {
         case feed
         case invest
         case health
-        case profile
+        case you
     }
 
     var selectedTab: Tab = .home

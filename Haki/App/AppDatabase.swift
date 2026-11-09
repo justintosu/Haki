@@ -33,6 +33,7 @@ final class AppDatabase {
             let container = try HakiSchema.makeContainer(inMemory: true)
             LedgerStore.loadSampleData(into: container.mainContext)
             PreviewData.loadHealthSamples(into: container.mainContext)
+            PreviewData.loadLifeSamples(into: container.mainContext)
             use(container)
         } catch {
             failureDescription = String(describing: error)

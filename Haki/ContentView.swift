@@ -35,8 +35,8 @@ struct RootView: View {
             Tab("Health", systemImage: "heart.text.square", value: AppRouter.Tab.health) {
                 HealthView()
             }
-            Tab("Profile", systemImage: "person.crop.circle", value: AppRouter.Tab.profile) {
-                MyProfileView()
+            Tab("You", systemImage: "person.crop.circle", value: AppRouter.Tab.you) {
+                YouView()
             }
         }
         .environment(router)

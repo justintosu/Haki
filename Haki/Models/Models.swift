@@ -293,6 +293,14 @@ enum HakiSchema {
         RoutineRecord.self,
         RoutineExerciseRecord.self,
         CustomExerciseRecord.self,
+        ClothingItem.self,
+        Outfit.self,
+        OutfitPiece.self,
+        Note.self,
+        FlashcardDeck.self,
+        Flashcard.self,
+        AssistantThread.self,
+        AssistantMessageRecord.self,
     ]
 
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {

@@ -59,6 +59,9 @@ struct FeedView: View {
     }
 
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            AssistantToolbarButton()
+        }
         ToolbarItemGroup(placement: .topBarTrailing) {
             NavigationLink {
                 PeopleSearchView()

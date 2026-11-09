@@ -29,6 +29,9 @@ struct HealthView: View {
             .background(Color.hakiBackground)
             .navigationTitle("Health")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    AssistantToolbarButton()
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         activeSheet = .captureMeal

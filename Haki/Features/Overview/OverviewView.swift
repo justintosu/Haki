@@ -52,6 +52,9 @@ struct OverviewView: View {
                     openedScreenContent(for: screen)
                 }
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        AssistantToolbarButton()
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             activeSheet = .settings
