@@ -266,7 +266,10 @@ final class WorkoutFlowTests: HakiUITestCase {
         name.typeText("Leg day UI test")
         dismissKeyboard()
         snap("W29 New routine")
-        addExercise(search: "squat", named: "Squat (Barbell)", screenshot: "W30 Exercise picker, squat")
+        // "squat barbell" lists Front Squat and Squat (Barbell), so the row sits
+        // near the top. With "squat" it was 5th, under where the search keyboard
+        // had just been, and that tap never reached it (the picker stayed open).
+        addExercise(search: "squat barbell", named: "Squat (Barbell)", screenshot: "W30 Exercise picker, squat")
         expectVisible(containing: "Squat (Barbell)")
         snap("W31 New routine with an exercise")
         newBar.buttons["Save"].tap()

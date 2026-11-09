@@ -143,11 +143,13 @@ final class PlacesFlowTests: HakiUITestCase {
         }
 
         dishBar.buttons["Log it"].tap()
-        // The confirmation only shows for 2.5 s, so look for it first.
-        XCTAssertTrue(element(containing: "Logged Chicken Power Bowl").waitForExistence(timeout: 4), "No \"Logged…\" confirmation")
+        // The confirmation shows once the sheet has closed, for 2.5 s, so look
+        // for it first (the wait covers the sheet closing) and snap it then.
+        let confirmation = element(containing: "Logged Chicken Power Bowl")
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 6), "No \"Logged…\" confirmation")
+        snap("P14 Dish logged")
         XCTAssertTrue(waitUntilGone(dishBar), "The dish sheet didn't close after Log it")
         expectStillRunning("logging a dish")
-        snap("P14 Dish logged")
 
         // The dish is in today's food log, from the menu.
         goBack()

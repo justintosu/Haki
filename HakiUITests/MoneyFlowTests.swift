@@ -204,7 +204,11 @@ final class MoneyFlowTests: HakiUITestCase {
         snap("M19 Settings")
         guard shown else { return }
 
-        let categories = control("label BEGINSWITH %@", "Categories")
+        // Settings opens on the profile, Account, Privacy and Delete account
+        // sections; Categories (under Organize) is further down, and the list
+        // only creates rows as they scroll on screen, so scroll to it first.
+        let categories = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Categories")).firstMatch
+        scrollTo(categories)
         if tapElement(categories, "Categories in Settings") {
             expectScreen("Categories")
             expectStillRunning("opening Categories")
@@ -260,12 +264,17 @@ final class MoneyFlowTests: HakiUITestCase {
         return inBar.exists ? inBar : app.buttons[label].firstMatch
     }
 
-    /// Swipes up until `element` can be tapped, at most `maxSwipes` times.
+    /// Swipes until `element` can be tapped, at most `maxSwipes` times: down
+    /// when it's above the middle of the screen (scrolled past), else up.
     @discardableResult
     private func scrollTo(_ element: XCUIElement, maxSwipes: Int = 6) -> Bool {
         var swipes = 0
         while !(element.exists && element.isHittable) && swipes < maxSwipes {
-            app.swipeUp()
+            if element.exists && element.frame.maxY < app.frame.midY {
+                app.swipeDown()
+            } else {
+                app.swipeUp()
+            }
             swipes += 1
         }
         return element.exists && element.isHittable

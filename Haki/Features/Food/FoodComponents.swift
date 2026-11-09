@@ -71,9 +71,11 @@ enum FoodFormat {
 }
 
 /// Colors for each nutrient. Always shown next to a text label, never alone.
+/// None of them is red: a full bar is good news, not a warning.
 enum NutritionPalette {
     static let calories = Color.accentColor
-    static let protein = Color.pink
+    /// Purple, like the "High protein" menu tag; lighter in dark mode.
+    static let protein = Color.purple
     static let carbs = Color.blue
     static let fat = Color.orange
     static let fiber = Color.green

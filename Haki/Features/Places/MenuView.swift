@@ -32,6 +32,8 @@ struct MenuView: View {
     @State private var selectedDish: MenuDishSelection?
     @State private var loggedCount = 0
     @State private var toast: String?
+    /// The confirmation for a dish just logged in its sheet, shown once the sheet is gone.
+    @State private var pendingToast: String?
 
     init(place: PlacesPlace) {
         self.place = place
@@ -58,7 +60,7 @@ struct MenuView: View {
         .navigationTitle(place.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: loadRequest) { await perform(loadRequest) }
-        .sheet(item: $selectedDish) { selection in
+        .sheet(item: $selectedDish, onDismiss: showPendingToast) { selection in
             MenuDishSheet(dish: selection.dish, placeName: place.name, currency: currency) { mealType in
                 didLog(selection.dish, mealType: mealType)
             }
@@ -229,9 +231,23 @@ struct MenuView: View {
 
     private func didLog(_ dish: MenuDish, mealType: MealType) {
         loggedCount += 1
-        let message = "Logged \(dish.name) to \(mealType.title.lowercased())"
+        // Shown from the sheet's onDismiss: set now, the toast would sit behind the
+        // closing sheet (hidden from VoiceOver) for part of its 2.5 s, and the sheet
+        // closing would cut the announcement off.
+        pendingToast = "Logged \(dish.name) to \(mealType.title.lowercased())"
+    }
+
+    /// Shows and announces the "Logged …" confirmation once the dish sheet is fully gone.
+    private func showPendingToast() {
+        guard let message = pendingToast else { return }
+        pendingToast = nil
         withAnimation(.snappy) { toast = message }
-        UIAccessibility.post(notification: .announcement, argument: message)
+        // High priority, so VoiceOver reading the uncovered screen doesn't interrupt it.
+        let announcement = NSAttributedString(
+            string: message,
+            attributes: [.accessibilitySpeechAnnouncementPriority: UIAccessibilityPriority.high]
+        )
+        UIAccessibility.post(notification: .announcement, argument: announcement)
     }
 
     private func hideToastLater() async {

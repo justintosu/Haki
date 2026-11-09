@@ -30,7 +30,6 @@ struct WorkoutsView: View {
     @State private var routineSheet: WorkoutsRoutineSheet?
     @State private var routineToStart: RoutineRecord?
     @State private var routineToDelete: RoutineRecord?
-    @State private var showsHevySettings = false
     @State private var startFeedback = 0
 
     var body: some View {
@@ -43,9 +42,6 @@ struct WorkoutsView: View {
             .toolbar { toolbarContent }
             .task { hevy.syncIfDue(in: modelContext) }
             .refreshable { await refreshFromHevy() }
-            .navigationDestination(isPresented: $showsHevySettings) {
-                HevySettingsView()
-            }
             .fullScreenCover(item: $presentedWorkout) { workout in
                 ActiveWorkoutView(workout: workout)
             }
@@ -187,13 +183,14 @@ struct WorkoutsView: View {
             } label: {
                 Label("Exercises", systemImage: "list.bullet")
             }
-            Button {
-                showsHevySettings = true
+            // A plain link, like the Health tab's Hevy row: this screen is
+            // itself pushed by a NavigationLink, and pushing Hevy settings
+            // through navigationDestination(isPresented:) here froze the app.
+            NavigationLink {
+                HevySettingsView()
             } label: {
-                HevyStatusRow()
-                    .contentShape(Rectangle())
+                HevyStatusRow(showsChevron: false)
             }
-            .buttonStyle(.plain)
             .accessibilityHint("Opens Hevy sync settings")
         } header: {
             Text("Library and sync")

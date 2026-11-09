@@ -262,9 +262,17 @@ final class FoodFlowTests: HakiUITestCase {
         expectStillRunning("filling in About you")
         snap("F24 About you filled in")
 
+        // The suggestion sits below the activity levels, off screen, and the
+        // form only creates rows as they scroll into view: scroll down to it.
         let useThese = app.buttons["Use these"]
         let usingThese = app.buttons["You're using these"]
-        let suggestion = waitForAny([useThese, usingThese], timeout: 5)
+        var suggestion = waitForAny([useThese, usingThese], timeout: 2)
+        var swipes = 0
+        while suggestion == nil && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+            suggestion = waitForAny([useThese, usingThese], timeout: 1)
+        }
         XCTAssertNotNil(suggestion, "No suggested targets after filling in About you")
         if let suggestion {
             scrollToElement(suggestion)

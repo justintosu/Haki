@@ -390,9 +390,10 @@ struct MealCaptureView: View {
     // MARK: Estimate
 
     /// Asks once before the first meal is sent to the AI, then estimates.
+    /// Preview mode never leaves the device, so it doesn't ask.
     private func requestEstimate() {
         guard canEstimate else { return }
-        if foodAIConsent {
+        if foodAIConsent || foodAI.isPreview {
             startEstimate()
         } else {
             showsFoodAIConsent = true
