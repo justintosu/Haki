@@ -787,6 +787,7 @@ suite("UsernameRules") {
 // MARK: - Health
 
 runHealthTests()
+runLifeTests()
 
 // MARK: - Summary
 
