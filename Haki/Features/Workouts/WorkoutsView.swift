@@ -17,6 +17,8 @@ struct WorkoutsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(HevySyncService.self) private var hevy
     @AppStorage(HealthSettings.weightUnitKey) private var weightUnitRaw = ""
+    @AppStorage(HealthSettings.distanceUnitKey) private var distanceUnitRaw = ""
+    @AppStorage(HealthSettings.restTimerEnabledKey) private var restTimerEnabled = true
 
     @Query(sort: [SortDescriptor(\WorkoutRecord.startedAt, order: .reverse)])
     private var workouts: [WorkoutRecord]
@@ -60,6 +62,7 @@ struct WorkoutsView: View {
             startSection(active: active)
             routinesSection
             librarySection
+            unitsSection
             progressSection(finished: finished, weightUnit: weightUnit)
             historySections(finished: finished, weightUnit: weightUnit)
         }
@@ -141,6 +144,40 @@ struct WorkoutsView: View {
                 Text("Save the exercises you do often as a routine, then start it with last time's weights filled in.")
             }
         }
+    }
+
+    /// Weight and distance units and the rest timer (stored values are
+    /// always kilograms and meters; only the display changes).
+    private var unitsSection: some View {
+        Section {
+            Picker("Weight", selection: weightUnitBinding) {
+                ForEach(WeightUnit.allCases) { unit in
+                    Text(unit.symbol).tag(unit)
+                }
+            }
+            Picker("Distance", selection: distanceUnitBinding) {
+                ForEach(DistanceUnit.allCases) { unit in
+                    Text(unit.symbol).tag(unit)
+                }
+            }
+            Toggle("Rest timer after each set", isOn: $restTimerEnabled)
+        } header: {
+            Text("Units and timer")
+        }
+    }
+
+    private var weightUnitBinding: Binding<WeightUnit> {
+        Binding(
+            get: { HealthSettings.weightUnit(from: weightUnitRaw) },
+            set: { weightUnitRaw = $0.rawValue }
+        )
+    }
+
+    private var distanceUnitBinding: Binding<DistanceUnit> {
+        Binding(
+            get: { HealthSettings.distanceUnit(from: distanceUnitRaw) },
+            set: { distanceUnitRaw = $0.rawValue }
+        )
     }
 
     private var librarySection: some View {

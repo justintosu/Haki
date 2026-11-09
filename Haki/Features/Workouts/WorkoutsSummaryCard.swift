@@ -14,6 +14,7 @@ import SwiftUI
 
 struct WorkoutsSummaryCard: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HealthSettings.weightUnitKey) private var weightUnitRaw = ""
 
     @Query(filter: #Predicate<WorkoutRecord> { $0.endedAt == nil }, sort: [SortDescriptor(\WorkoutRecord.startedAt, order: .reverse)])
@@ -27,9 +28,11 @@ struct WorkoutsSummaryCard: View {
 
     @State private var presentedWorkout: WorkoutRecord?
     @State private var startFeedback = 0
+    /// "Today" for this week's stats; moved forward when the day changes.
+    @State private var now = Date.now
 
     var body: some View {
-        let stats = WorkoutsWeekStats(finished: finishedWorkouts)
+        let stats = WorkoutsWeekStats(finished: finishedWorkouts, now: now)
         let weightUnit = HealthSettings.weightUnit(from: weightUnitRaw)
 
         VStack(alignment: .leading, spacing: 16) {
@@ -53,6 +56,21 @@ struct WorkoutsSummaryCard: View {
             ActiveWorkoutView(workout: workout)
         }
         .sensoryFeedback(.start, trigger: startFeedback)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshDay() }
+        }
+        .task {
+            refreshDay()
+            for await _ in NotificationCenter.default.notifications(named: .NSCalendarDayChanged) {
+                refreshDay()
+            }
+        }
+    }
+
+    private func refreshDay() {
+        if !Calendar.current.isDate(Date.now, inSameDayAs: now) {
+            now = .now
+        }
     }
 
     private func start(_ routine: RoutineRecord?) {

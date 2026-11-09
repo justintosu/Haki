@@ -110,6 +110,8 @@ final class AppDatabase {
         defaults.removeObject(forKey: HealthSettings.hevyLastSyncKey)
         // Owned by Recurring: suggestions dismissed for the old store's transactions.
         defaults.removeObject(forKey: "dismissedRecurringSuggestions")
+        // Which bills and budgets were sample data described the old store.
+        LedgerStore.forgetSampleDataRecord()
     }
 
     private func use(_ container: ModelContainer) {

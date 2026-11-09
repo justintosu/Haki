@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(AppRouter.self) private var router
+    @Environment(HevySyncService.self) private var hevy
 
     @Query private var accounts: [Account]
     @Query private var categories: [TransactionCategory]
@@ -190,7 +191,7 @@ struct SettingsView: View {
 
             SettingsNoteRow(
                 title: "Private by design",
-                message: "Your money data — accounts, transactions, budgets and bills — stays on this device. Your profile, posts and connected brokerage holdings are saved to your Haki account. Other people only ever see your portfolio as percentages, and only if you share it.",
+                message: "Your money data — accounts, transactions, budgets and bills — stays on this device, except what you choose to send to Haki's AI (Ask Haki and photo features), which is processed by Anthropic's Claude and not stored by Haki. Your profile, posts and connected brokerage holdings are saved to your Haki account. Other people only ever see your portfolio as percentages, and only if you share it.",
                 systemImage: "lock.fill",
                 tint: .blue
             )
@@ -303,6 +304,8 @@ struct SettingsView: View {
     }
 
     private func eraseAllData() {
+        // Stop a Hevy sync first, so it can't write its old sync time back after the erase.
+        hevy.forgetSyncedWorkouts()
         withAnimation(.snappy) {
             LedgerStore.eraseAllData(in: modelContext)
             FoodStore.eraseAll(in: modelContext)
@@ -311,8 +314,6 @@ struct SettingsView: View {
             StudyStore.eraseAll(in: modelContext)
             AssistantStore.eraseAll(in: modelContext)
         }
-        // Copied Hevy workouts were erased too; the next sync fetches them again from the start.
-        UserDefaults.standard.removeObject(forKey: HealthSettings.hevyLastSyncKey)
         refreshTransactionCount()
         dismissedRecurringSuggestions = ""
         statusMessage = "All data erased. The built-in categories were restored."

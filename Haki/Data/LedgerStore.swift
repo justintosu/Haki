@@ -162,6 +162,12 @@ enum LedgerStore {
 
     /// What `loadSampleData` added outside the demo accounts (which their
     /// institutions identify), so `removeSampleData` takes out only that.
+    /// Forgets which bills and budgets sample data added (for a store that
+    /// was set aside).
+    static func forgetSampleDataRecord() {
+        SampleDataRecord.clear()
+    }
+
     private struct SampleDataRecord {
         private static let billIDsKey = "sampleData.billIDs"
         private static let budgetSeedKeysKey = "sampleData.budgetSeedKeys"

@@ -51,7 +51,7 @@ struct MealCaptureView: View {
 
     private static let descriptionLimit = 600
     /// Bool in UserDefaults: the one-time "send this meal to Anthropic" permission.
-    static let foodAIConsentKey = "health.foodAIConsent"
+    static let foodAIConsentKey = HealthSettings.foodAIConsentKey
 
     var body: some View {
         NavigationStack {

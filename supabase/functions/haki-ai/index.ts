@@ -430,7 +430,9 @@ async function callClaude(ai: AiConfig, request: ClaudeRequest): Promise<BetaMes
         ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
         : {}),
     },
-    { timeout: request.timeoutMs },
+    // No SDK retry: a retried call gets a fresh full timeout and could run past
+    // the app's timeout and Supabase's 150 s request limit.
+    { timeout: request.timeoutMs, maxRetries: 0 },
   );
   if (response.stop_reason === "refusal") {
     console.warn(

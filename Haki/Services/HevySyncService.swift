@@ -153,6 +153,19 @@ final class HevySyncService {
         await sync(in: context)
     }
 
+    /// For "Erase all data": stops a running sync (so it can't write the old
+    /// sync time back) and forgets the last sync, so the next one copies
+    /// recent workouts again. Stays connected.
+    func forgetSyncedWorkouts() {
+        stopSync()
+        lastAttemptAt = nil
+        lastSyncAt = nil
+        lastError = nil
+        if !isPreview {
+            defaults.removeObject(forKey: HealthSettings.hevyLastSyncKey)
+        }
+    }
+
     /// Forgets the key. Workouts copied from Hevy stay unless
     /// `removeCopiedWorkouts`; Haki's own workouts always stay.
     func disconnect(removeCopiedWorkouts: Bool, in context: ModelContext) {

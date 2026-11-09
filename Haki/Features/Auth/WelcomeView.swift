@@ -180,6 +180,9 @@ struct WelcomeView: View {
         VStack(spacing: 6) {
             Label("Your budgets and transactions stay on this iPhone.", systemImage: "lock.fill")
             Text("Others on Haki only see what you choose to share — never your balances.")
+            if let url = AppInfo.privacyPolicyURL {
+                Link("Privacy Policy", destination: url)
+            }
         }
         .font(.footnote)
         .foregroundStyle(.secondary)

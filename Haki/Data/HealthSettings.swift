@@ -28,6 +28,8 @@ enum HealthSettings {
     static let hevyLastSyncKey = "health.hevyLastSync"
     /// Hevy username, shown in Settings once connected.
     static let hevyUsernameKey = "health.hevyUsername"
+    /// Bool: the person agreed to send meal photos/descriptions to Haki's AI.
+    static let foodAIConsentKey = "health.foodAIConsent"
 
     static func targets(from data: Data) -> NutritionTargets {
         guard !data.isEmpty, let targets = try? JSONDecoder().decode(NutritionTargets.self, from: data) else {
@@ -60,7 +62,7 @@ enum HealthSettings {
     /// Clears every health preference and the Hevy sync state (the Hevy API
     /// key lives in the Keychain and is removed separately).
     static func reset(in defaults: UserDefaults = .standard) {
-        for key in [targetsKey, profileKey, weightUnitKey, distanceUnitKey, restTimerEnabledKey, hevyUploadEnabledKey, hevyLastSyncKey, hevyUsernameKey] {
+        for key in [targetsKey, profileKey, weightUnitKey, distanceUnitKey, restTimerEnabledKey, hevyUploadEnabledKey, hevyLastSyncKey, hevyUsernameKey, foodAIConsentKey] {
             defaults.removeObject(forKey: key)
         }
     }
